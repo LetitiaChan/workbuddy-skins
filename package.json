@@ -1,0 +1,17 @@
+{
+  "name": "workbuddy-skin-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "workbuddy-skin": "src/cli.mjs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "doctor": "node src/cli.mjs doctor",
+    "status": "node src/cli.mjs status",
+    "list": "node src/cli.mjs list",
+    "apply": "node src/cli.mjs apply",
+    "make-theme": "node scripts/make-theme.mjs"
+  }
+}
