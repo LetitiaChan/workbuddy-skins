@@ -20,8 +20,10 @@ export const CSS_SENTINELS = {
 
 // 视频皮肤（内置/自定义共用）：<video> 固定层挂 #root 之下，需要 isolate 叠层上下文。
 // 内置视频主题在 Node 端把它追加到 CSS 末尾，自定义视频主题在客户端拼接，同源一份避免漂移。
-// 会话/详情页（body[data-wb-skin-page="chat"]）视频层压到 35% 不透明度，与 #root 纱罩联动降噪
-export const VIDEO_LAYER_CSS = "\n#root { isolation: isolate !important; }\nbody[data-wb-skin-page=\"chat\"] .wb-skin-video-layer { opacity: .35 !important; }\n";
+// 会话/详情页（body[data-wb-skin-page="chat"]）视频层压到 35% 不透明度，与 #root 纱罩联动降噪；
+// 视频挂载成功（data-wb-skin-video=on）时 chat 页撤掉 #root 的海报帧底图，只留纱罩盖表面色——
+// 否则半透明视频与静态海报帧错位叠加出重影；视频缺失时标记不在，海报兜底照常
+export const VIDEO_LAYER_CSS = "\n#root { isolation: isolate !important; }\nbody[data-wb-skin-page=\"chat\"] .wb-skin-video-layer { opacity: .35 !important; }\nbody[data-wb-skin-page=\"chat\"][data-wb-skin-video=\"on\"] #root { background: linear-gradient(0deg, color-mix(in srgb, var(--wb-surface) 50%, transparent), color-mix(in srgb, var(--wb-surface) 50%, transparent)), var(--wb-surface) !important; }\n";
 
 export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTemplate = "" }) {
   if (!Array.isArray(entries) || entries.length === 0) {
@@ -711,6 +713,8 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   const releaseVideo = () => {
     videoLayer?.remove();
     videoLayer = null;
+    // 视频层摘除时同步撤掉挂载标记，#root 海报帧兜底恢复（见 VIDEO_LAYER_CSS）
+    document.body.removeAttribute("data-wb-skin-video");
   };
   const VIDEO_STORE = ${VIDEO_DB_LITERALS.store};
   const videoStore = {
@@ -774,6 +778,8 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       wrapper.append(video, overlay);
       (document.getElementById("root") ?? document.body).appendChild(wrapper);
       videoLayer = wrapper;
+      // 挂载标记：chat 页据此撤掉海报帧底图，避免半透明视频与静态海报叠出重影
+      document.body.setAttribute("data-wb-skin-video", "on");
     };
     const cached = videoUrlCache.get(theme.id);
     if (cached) { attach(cached); return; }

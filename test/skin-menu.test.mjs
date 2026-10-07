@@ -205,6 +205,17 @@ test("视频层降噪：VIDEO_LAYER_CSS 含 chat 页 35% 不透明度规则，wr
   assert.ok(script.includes("transition:opacity .4s ease"));
 });
 
+test("视频重影防护：chat 页且视频已挂载时撤掉 #root 海报帧，视频缺失回退海报兜底", () => {
+  const script = build();
+  assert.doesNotThrow(() => new Function(script));
+  // 挂载/摘除视频层时同步维护标记
+  assert.ok(script.includes('document.body.setAttribute("data-wb-skin-video", "on")'));
+  assert.ok(script.includes('document.body.removeAttribute("data-wb-skin-video")'));
+  // 双条件规则：仅 chat 页 + 视频在挂时才撤海报（单视频缺失时海报兜底不受影响）
+  assert.ok(script.includes('body[data-wb-skin-page=\\"chat\\"][data-wb-skin-video=\\"on\\"] #root'));
+  assert.ok(script.includes("var(--wb-surface) !important;"));
+});
+
 test("按钮拖拽：默认锚定 reposition，拖拽切自由定位并持久化，双击复位", () => {
   const script = build();
   assert.doesNotThrow(() => new Function(script));
