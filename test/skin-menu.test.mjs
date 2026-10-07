@@ -182,8 +182,27 @@ test("reposition：MutationObserver 按 rAF 合帧，不再每次变更都同步
   const script = build();
   // reposition 与定位按钮显隐共用一个 subtree observer，各自内部按 rAF 合帧
   assert.ok(script.includes("new MutationObserver(() => { scheduleReposition(); scheduleNavUpdate(); })"));
-  assert.ok(script.includes("requestAnimationFrame(() => { repositionQueued = false; reposition(); })"));
+  assert.ok(script.includes("requestAnimationFrame(() => { repositionQueued = false; reposition(); detectPage(); })"));
   assert.ok(!script.includes("queueMicrotask"));
+});
+
+test("页面标记：detectPage 按 wb-home-page/会话宿主写 body[data-wb-skin-page]，teardown 移除", () => {
+  const script = build();
+  assert.doesNotThrow(() => new Function(script));
+  // home 优先，否则在会话宿主选择器里找尺寸合格者（与 TDP 主题 skin.js 同规则）
+  assert.ok(script.includes('document.querySelector(".wb-home-page")'));
+  assert.ok(script.includes('.teams-container [data-view-id=main-content]'));
+  assert.ok(script.includes('document.body.setAttribute("data-wb-skin-page", page)'));
+  // 两者都不存在时移除标记（设置页等维持壁纸原样）；teardown 同样清理
+  assert.ok(script.includes('document.body.removeAttribute("data-wb-skin-page")'));
+  // 挂进 layoutObserver 的 rAF 合帧（见上条测试），SPA 路由切换后随 DOM 变更自动重判
+});
+
+test("视频层降噪：VIDEO_LAYER_CSS 含 chat 页 35% 不透明度规则，wrapper 带稳定 class 与过渡", () => {
+  const script = build();
+  assert.ok(script.includes('body[data-wb-skin-page=\\"chat\\"] .wb-skin-video-layer { opacity: .35 !important; }'));
+  assert.ok(script.includes('wrapper.className = "wb-skin-video-layer"'));
+  assert.ok(script.includes("transition:opacity .4s ease"));
 });
 
 test("按钮拖拽：默认锚定 reposition，拖拽切自由定位并持久化，双击复位", () => {

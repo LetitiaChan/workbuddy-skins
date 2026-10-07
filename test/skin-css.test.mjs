@@ -47,6 +47,21 @@ test("左上角字标：硬切渐变双色字标（Work 文本色 / Buddy accent
   assert.ok(!/#[0-9a-f]{6}/i.test(logoBlock), "字标不应硬编码色值（哨兵替换覆盖不到 data URL 编码色值）");
 });
 
+test("会话/详情页壁纸降噪：chat 页标记时 #root 叠 65% 表面色纱罩，home/无标记不受影响", () => {
+  const css = buildSkinCss({ theme: baseTheme, heroDataUrl: HERO });
+  // chat 页规则存在且含纱罩层（首层在最上），hero 仍在底层保留
+  const marker = 'body[data-wb-skin-page="chat"] #root {';
+  assert.ok(css.includes(marker));
+  const chatBlock = css.slice(css.indexOf(marker), css.indexOf("}", css.indexOf(marker)));
+  assert.ok(chatBlock.includes("color-mix(in srgb, var(--wb-surface) 65%, transparent)"));
+  assert.ok(chatBlock.includes("url("), "纱罩下应保留 hero 底图（透出隐约底色）");
+  // 全 var() 引用：自定义皮肤哨兵替换后自动适配取色
+  assert.ok(!/#[0-9a-f]{3,8}\b/i.test(chatBlock), "纱罩不应硬编码色值");
+  // 规则带页面属性限定，默认（home/无标记）不匹配——buildPaletteCss 无壁纸不应携带
+  const palette = buildPaletteCss({ theme: baseTheme });
+  assert.ok(!palette.includes("data-wb-skin-page"), "配色主题无壁纸，不应输出 chat 降噪规则");
+});
+
 test("「为你推荐」技能推荐条：原生不透明白条改为磨砂半透明，全 var() 引用", () => {
   const css = buildSkinCss({ theme: baseTheme, heroDataUrl: HERO });
   // 条本体 + 上方 32px 渐变托底（::before）必须覆盖，否则壁纸上呈整块白版

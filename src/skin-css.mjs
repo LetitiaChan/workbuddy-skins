@@ -198,6 +198,19 @@ ${buildVariableOverrides(colors)}
     url(${JSON.stringify(heroDataUrl)}) right center / cover no-repeat fixed !important;
 }
 
+/* 会话/详情页壁纸降噪：菜单脚本按路由维护 body[data-wb-skin-page]（home=新建任务页、
+   chat=会话/详情页，机制同 TDP 主题 skin.js 的 data-tdp-page）。chat 时在原三层背景之上
+   叠 65% 表面色纱罩（CSS 多背景首层在最上），壁纸仍清晰可辨，文字可读性由纱罩托底；
+   home 或无标记（设置页等）时本规则不匹配，维持全量透出。选择器优先级高于上方 #root
+   规则（均带 !important），chat 时整组 background 被本规则替换 */
+body[data-wb-skin-page="chat"] #root {
+  background:
+    linear-gradient(0deg, color-mix(in srgb, var(--wb-surface) 65%, transparent), color-mix(in srgb, var(--wb-surface) 65%, transparent)),
+    linear-gradient(90deg, color-mix(in srgb, var(--wb-surface) 72%, transparent) 0 14%, transparent 30%),
+    linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-surface) 50%, transparent) 85% 100%),
+    url(${JSON.stringify(heroDataUrl)}) right center / cover no-repeat fixed !important;
+}
+
 /* 关键：teams-container 是 #root 直接子层，默认有不透明灰底，会完全盖住背景图 */
 .teams-container,
 .teams-container.is-mac {

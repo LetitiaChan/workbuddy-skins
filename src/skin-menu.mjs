@@ -19,8 +19,9 @@ export const CSS_SENTINELS = {
 };
 
 // 视频皮肤（内置/自定义共用）：<video> 固定层挂 #root 之下，需要 isolate 叠层上下文。
-// 内置视频主题在 Node 端把它追加到 CSS 末尾，自定义视频主题在客户端拼接，同源一份避免漂移
-export const VIDEO_LAYER_CSS = "\n#root { isolation: isolate !important; }\n";
+// 内置视频主题在 Node 端把它追加到 CSS 末尾，自定义视频主题在客户端拼接，同源一份避免漂移。
+// 会话/详情页（body[data-wb-skin-page="chat"]）视频层压到 35% 不透明度，与 #root 纱罩联动降噪
+export const VIDEO_LAYER_CSS = "\n#root { isolation: isolate !important; }\nbody[data-wb-skin-page=\"chat\"] .wb-skin-video-layer { opacity: .35 !important; }\n";
 
 export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTemplate = "" }) {
   if (!Array.isArray(entries) || entries.length === 0) {
@@ -152,11 +153,37 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   // 且读布局落在浏览器本就要做布局的帧内，不再在每次变更后额外触发一次 reflow。
   // 定位按钮的显隐更新挂同一 observer（scheduleNavUpdate 在下方声明，回调只可能在
   // 脚本同步执行完之后触发，无 TDZ 问题），不另开 observer 避免流式输出双倍回调
+
+  // 页面标记：新建任务页(home)壁纸全量透出，会话/详情页(chat)由 CSS 纱罩/视频降噪
+  // （body[data-wb-skin-page="chat"] 系列规则）。探测规则与 TDP 主题 skin.js 一致：
+  // wb-home-page 优先，否则找尺寸合格的会话宿主；两者都不存在（设置页等）时移除
+  // 标记——保持壁纸原样透出，不引入新行为。随 layoutObserver 每帧重判，SPA 路由
+  // 切换（DOM 重建）后自动更新
+  const PAGE_HOST_SELECTORS = [".teams-container [data-view-id=main-content]", ".teams-main-content", ".main-content", ".claw-agent-chat-pane"];
+  const detectPage = () => {
+    let page = null;
+    if (document.querySelector(".wb-home-page")) page = "home";
+    else {
+      for (const selector of PAGE_HOST_SELECTORS) {
+        const list = document.querySelectorAll(selector);
+        for (let i = 0; i < list.length; i++) {
+          const rect = list[i].getBoundingClientRect();
+          if (rect.width > 400 && rect.height > 300) { page = "chat"; break; }
+        }
+        if (page) break;
+      }
+    }
+    if (document.body.getAttribute("data-wb-skin-page") !== page) {
+      if (page) document.body.setAttribute("data-wb-skin-page", page);
+      else document.body.removeAttribute("data-wb-skin-page");
+    }
+  };
+
   let repositionQueued = false;
   const scheduleReposition = () => {
     if (repositionQueued) return;
     repositionQueued = true;
-    requestAnimationFrame(() => { repositionQueued = false; reposition(); });
+    requestAnimationFrame(() => { repositionQueued = false; reposition(); detectPage(); });
   };
   const layoutObserver = new MutationObserver(() => { scheduleReposition(); scheduleNavUpdate(); });
   layoutObserver.observe(document.body, { childList: true, subtree: true });
@@ -166,6 +193,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   // 窗口尺寸变化会移动内容列右缘，定位按钮需一并重算：resize 监听在 scheduleNavUpdate
   // 声明之后注册（见下方导航区），此处直接传引用会踩 TDZ
   reposition();
+  detectPage();
   // actions 行可能晚于本脚本挂载，下一帧再校准一次
   scheduleReposition();
 
@@ -730,7 +758,9 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       if (document.documentElement.dataset.workbuddySkin !== theme.id) return;
       releaseVideo();
       const wrapper = document.createElement("div");
-      wrapper.style.cssText = "position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;";
+      // class 供 VIDEO_LAYER_CSS 的 chat 页降噪规则命中；transition 让路由切换时平滑淡出
+      wrapper.className = "wb-skin-video-layer";
+      wrapper.style.cssText = "position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;transition:opacity .4s ease;";
       const video = document.createElement("video");
       video.autoplay = true; video.muted = true; video.loop = true; video.playsInline = true;
       video.style.cssText = "width:100%;height:100%;object-fit:cover;object-position:right center;display:block;";
@@ -1320,6 +1350,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     teardownThemeJs();
     releaseVideo();
     releaseHeroBlob();
+    document.body.removeAttribute("data-wb-skin-page");
     for (const url of videoUrlCache.values()) URL.revokeObjectURL(url);
     videoUrlCache.clear();
     videoStore.close();
