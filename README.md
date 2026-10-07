@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎨 WorkBuddy Skin Studio · WorkBuddy 换肤工作室
+# 🎨 WorkBuddy Skins · WorkBuddy 自定义主题
 
 **给 WorkBuddy 桌面端换一张会呼吸的脸。**
 
@@ -73,7 +73,7 @@
 不想自己敲命令？把下面这段提示词**整段复制**发给任意 AI 助手（CodeBuddy / Claude / Cursor 等）即可：
 
 ```text
-用这个开源项目帮我更换 WorkBuddy 的主题：https://github.com/LetitiaChan/workbuddy-skin-studio
+用这个开源项目帮我更换 WorkBuddy 的主题：https://github.com/LetitiaChan/workbuddy-skins
 
 请先克隆仓库，然后阅读仓库根目录的 SKILL.md，严格按照其中的自动化流程执行：
 检测我的操作系统 → 运行对应的 apply 脚本（Windows 双击 Start.bat 或运行 scripts\apply.ps1，macOS 运行 scripts/apply.command）→ 注入主题 → 验证状态。
@@ -85,7 +85,7 @@ AI 会克隆仓库、读取根目录的 [`SKILL.md`](SKILL.md)，自动完成**�
 > 想指定主题，把第一行换成对应主题即可，例如：
 >
 > ```text
-> 用这个开源项目帮我更换 WorkBuddy 的主题：https://github.com/LetitiaChan/workbuddy-skin-studio
+> 用这个开源项目帮我更换 WorkBuddy 的主题：https://github.com/LetitiaChan/workbuddy-skins
 > 用 miku-light 主题（或：用深色原神主题 genshin-night）
 > ```
 
@@ -353,7 +353,6 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 - [HeiGeAi/heige-codex-skin-studio](https://github.com/HeiGeAi/heige-codex-skin-studio) — CDP 注入架构、主题 schema、菜单取色逻辑、`.command` 脚本
 - [Fei-Away/Codex-Dream-Skin](https://github.com/Fei-Away/Codex-Dream-Skin) — Windows PowerShell 启动套路（`Test-CDP` / `Start-Process` / 路径探测）、light/dark 自动适配思路
 - [smartcai87/workbuddy-dream-skin](https://github.com/smartcai87/workbuddy-dream-skin) — 4 款内置主题「极光之夜 / 静谧星空 / 液态玻璃 · 亮 / 液态玻璃 · 暗」的壁纸与配色迁移自该项目（MIT）
-- [xxxhh336/dream-work-theme](https://github.com/xxxhh336/dream-work-theme) — 内置主题「长河落日圆」（`sunset`）的壁纸与配色迁移自该项目（Apache-2.0，作者 Jensen）
 - [zhangxiaoqiang1991/workbuddy-skin-skill](https://github.com/zhangxiaoqiang1991/workbuddy-skin-skill) — 10 套内置配色主题（`focus-night` / `warm-paper` / `cyber-lobster` / `stage-aurora` / `rose-glam` / `silver-idol` / `sakura-dream` / `mecha-core` / `magical-night` / `pixel-campus`）的配色与主内容区签名渐变迁移自该项目（MIT）；其 CSS 面向旧版本 DOM 类名，迁移后改为 `buildPaletteCss` 基座（--cb-* 变量覆盖）+ 装饰层（签名渐变）两层结构适配当前版本
 
 ## 📜 许可与素材

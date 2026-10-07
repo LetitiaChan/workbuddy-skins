@@ -1,5 +1,5 @@
 @echo off
-REM WorkBuddy Skin Studio - Windows double-click entry (recommended)
+REM WorkBuddy Skins - Windows double-click entry (recommended)
 REM Thin wrapper around scripts\apply.ps1 so behavior stays identical:
 REM restart WorkBuddy with CDP port 9223 (skip if already debuggable),
 REM then inject the skin. PowerShell is invoked with -ExecutionPolicy Bypass,
@@ -20,7 +20,7 @@ if defined THEME (
 
 if errorlevel 1 (
   echo.
-  echo [skin-studio] apply failed. See messages above.
+  echo [workbuddy-skins] apply failed. See messages above.
   pause
 )
 endlocal

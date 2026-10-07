@@ -20,7 +20,7 @@
     在当前 WT 窗口开新标签页，而非新窗口
 .EXAMPLE
     .\ai-workspace.ps1
-    .\ai-workspace.ps1 -Path F:\github\workbuddy-skin-studio -Layout quad
+    .\ai-workspace.ps1 -Path F:\github\workbuddy-skins -Layout quad
     .\ai-workspace.ps1 -AiCli claude -InCurrentWindow
 #>
 [CmdletBinding()]

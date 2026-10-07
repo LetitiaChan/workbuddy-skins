@@ -241,7 +241,7 @@ test("常量与 Node 端同源：视频上限、动图分辨率、IndexedDB 库�
   const script = build();
   assert.ok(script.includes(`MAX_VIDEO_BYTES = ${30 * 1024 * 1024}`));
   assert.ok(script.includes("MAX_ANIMATED_DIMENSION = 1920"));
-  assert.ok(script.includes('indexedDB.open("workbuddy-skin-studio", 1)'));
+  assert.ok(script.includes('indexedDB.open("workbuddy-skins", 1)'));
 });
 
 test("伴随 JS：激活执行、返回值作拆除回调，切换/恢复原生/全局 teardown 均拆除", () => {

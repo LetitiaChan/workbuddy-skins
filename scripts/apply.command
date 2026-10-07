@@ -1,5 +1,5 @@
 #!/bin/bash
-# WorkBuddy Skin Studio — 以 CDP 调试模式重启 WorkBuddy 并应用当前主题
+# WorkBuddy Skins — 以 CDP 调试模式重启 WorkBuddy 并应用当前主题
 set -e
 cd "$(dirname "$0")/.."
 

@@ -1,5 +1,5 @@
 ---
-name: workbuddy-skin-studio
+name: workbuddy-skins
 description: >-
   Apply a reversible theme/skin to the WorkBuddy desktop app (Tencent AI office
   agent) via local Chromium DevTools Protocol (CDP) injection. Use when the user
@@ -9,7 +9,7 @@ description: >-
   theme". Never modifies app.asar, the official install directory, or code signing.
 ---
 
-# WorkBuddy Skin Studio
+# WorkBuddy Skins
 
 Reversible WorkBuddy desktop theming through local CDP injection. The tool
 restarts WorkBuddy with `--remote-debugging-port=9223`, discovers its renderer
@@ -18,7 +18,7 @@ No official files are touched.
 
 ## When this skill applies
 
-- The user gives you a GitHub URL for `workbuddy-skin-studio` (or similar) and
+- The user gives you a GitHub URL for `workbuddy-skins` (or similar) and
   asks you to install / apply / use it to theme WorkBuddy.
 - The user wants to change WorkBuddy's look (color theme, background image,
   custom uploaded image) without editing the official app.
@@ -236,6 +236,6 @@ renderer hint `renderer/index.html`. `npm test` should report all tests passing.
 
 ## One-line summary for the user
 
-> "I cloned workbuddy-skin-studio, restarted WorkBuddy in debug mode, and injected
+> "I cloned workbuddy-skins, restarted WorkBuddy in debug mode, and injected
 > the theme. Use the 🎨 button (top-right) to switch or revert. Re-run apply if
 > you restart WorkBuddy manually."

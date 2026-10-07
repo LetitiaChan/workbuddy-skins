@@ -1,8 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const PRODUCT_ID = "workbuddy-skin-studio";
-export const PRODUCT_NAME = "WorkBuddy Skin Studio";
+export const PRODUCT_ID = "workbuddy-skins";
+export const PRODUCT_NAME = "WorkBuddy Skins";
 export const STATE_SCHEMA_VERSION = 1;
 export const THEME_SCHEMA_VERSION = 1;
 export const DEFAULT_THEME_ID = "miku-light";
@@ -20,7 +20,7 @@ export const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif
 export const MAX_ANIMATED_DIMENSION = 1920;
 
 // 渲染进程 IndexedDB：视频皮肤原始文件存储（Node 端预置与菜单脚本共用同一个库）
-export const VIDEO_DB_NAME = "workbuddy-skin-studio";
+export const VIDEO_DB_NAME = "workbuddy-skins";
 export const VIDEO_DB_STORE = "videos";
 
 // WorkBuddy renderer target 的 URL 特征：app.asar/renderer/index.html
@@ -30,8 +30,8 @@ export function resolveStudioPaths({ home = homedir() } = {}) {
   const isWin = process.platform === "win32";
   const installRoot = join(home, ".workbuddy", PRODUCT_ID);
   const stateRoot = isWin
-    ? join(process.env.LOCALAPPDATA || join(home, "AppData", "Local"), "WorkBuddySkinStudio")
-    : join(home, "Library", "Application Support", "WorkBuddySkinStudio");
+    ? join(process.env.LOCALAPPDATA || join(home, "AppData", "Local"), "WorkBuddySkins")
+    : join(home, "Library", "Application Support", "WorkBuddySkins");
 
   return {
     installRoot,

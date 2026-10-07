@@ -30,11 +30,11 @@ test("resolveStudioPaths：Windows 下 stateRoot 优先 LOCALAPPDATA，缺失时
   const saved = process.env.LOCALAPPDATA;
   try {
     process.env.LOCALAPPDATA = "X:\\LocalAppData";
-    assert.equal(resolveStudioPaths({ home: "C:\\Users\\u" }).stateRoot, join("X:\\LocalAppData", "WorkBuddySkinStudio"));
+    assert.equal(resolveStudioPaths({ home: "C:\\Users\\u" }).stateRoot, join("X:\\LocalAppData", "WorkBuddySkins"));
     delete process.env.LOCALAPPDATA;
     assert.equal(
       resolveStudioPaths({ home: "C:\\Users\\u" }).stateRoot,
-      join("C:\\Users\\u", "AppData", "Local", "WorkBuddySkinStudio"),
+      join("C:\\Users\\u", "AppData", "Local", "WorkBuddySkins"),
     );
   } finally {
     if (saved === undefined) delete process.env.LOCALAPPDATA;
@@ -46,7 +46,7 @@ test("resolveStudioPaths：非 Windows 按 macOS 布局落到 ~/Library/Applicat
   if (process.platform === "win32") return t.skip("仅非 Windows 布局");
   assert.equal(
     resolveStudioPaths({ home: "/Users/u" }).stateRoot,
-    join("/Users/u", "Library", "Application Support", "WorkBuddySkinStudio"),
+    join("/Users/u", "Library", "Application Support", "WorkBuddySkins"),
   );
 });
 

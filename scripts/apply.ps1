@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  WorkBuddy Skin Studio - Windows apply
+  WorkBuddy Skins - Windows apply
 .DESCRIPTION
   以 CDP 调试模式重启 WorkBuddy 并应用当前主题
 .PARAMETER Port

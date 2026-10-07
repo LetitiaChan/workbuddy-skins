@@ -182,7 +182,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = "\\u{1F3A8}";
-  button.title = "WorkBuddy Skin Studio\\uff08\\u62d6\\u62fd\\u79fb\\u52a8\\uff0c\\u53cc\\u51fb\\u590d\\u4f4d\\uff09";
+  button.title = "WorkBuddy Skins\\uff08\\u62d6\\u62fd\\u79fb\\u52a8\\uff0c\\u53cc\\u51fb\\u590d\\u4f4d\\uff09";
   // 无底图：去掉圆底/描边/阴影/磨砂，只留色盘图标本体；line-height 保证垂直居中；
   // cursor:grab + touch-action:none 服务拖拽（触屏拖时不滚页面）
   button.style.cssText = "display:block;margin-left:auto;width:38px;height:38px;border:0;background:transparent;cursor:grab;font-size:19px;padding:0;line-height:38px;touch-action:none;";

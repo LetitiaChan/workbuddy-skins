@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  WorkBuddy Skin Studio - shared helpers for apply.ps1 / pause.ps1 / find-workbuddy.ps1
+  WorkBuddy Skins - shared helpers for apply.ps1 / pause.ps1 / find-workbuddy.ps1
 .DESCRIPTION
   Dot-source this file:  . (Join-Path $PSScriptRoot 'common.ps1')
   Kept ASCII-only so Windows PowerShell 5.1 parses it correctly with or without a BOM.
