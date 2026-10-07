@@ -34,7 +34,8 @@ function buildVariableOverrides(colors) {
   /* 背景 */
   --cb-bg-primary: var(--wb-surface) !important;
   --cb-bg-secondary: color-mix(in srgb, var(--wb-surface) 94%, transparent) !important;
-  --cb-panel-bg-primary: color-mix(in srgb, var(--wb-surface) 88%, transparent) !important;
+  /* 详情面板承载文件/代码内容需保可读性，但 88% 会完全遮住壁纸；60% 磨砂下壁纸可辨 */
+  --cb-panel-bg-primary: color-mix(in srgb, var(--wb-surface) 60%, transparent) !important;
   --cb-team-member-card-background: color-mix(in srgb, var(--wb-surface) 88%, transparent) !important;
 
   /* 文字 */
@@ -138,10 +139,42 @@ function buildComponentAccents() {
   color: var(--wb-text) !important;
 }
 
-/* 详情面板半透明磨砂 */
+/* 详情面板半透明磨砂：60% 让壁纸可辨（88% 时右侧栏几乎完全不透，见 --cb-panel-bg-primary） */
 [data-view-id=detail-panel] {
-  background: color-mix(in srgb, var(--wb-surface) 88%, transparent) !important;
+  background: color-mix(in srgb, var(--wb-surface) 60%, transparent) !important;
   backdrop-filter: blur(18px) saturate(1.08);
+}
+
+/* 详情面板内部：文件预览/代码编辑器的原生不透明白底会盖住壁纸（CDP 实测内层
+   .detail-panel、.detail-main__body、代码预览容器（CSS module 哈希类，子串匹配）
+   与 Monaco 的 .monaco-editor 容器/.monaco-editor-background/.margin/.minimap
+   均为 rgb(255,255,255)）。透化后由壳层 60% 磨砂+模糊托底保可读性，文字前景色独立不受影响；
+   配色主题根层为实底 surface，透明后颜色与原来一致 */
+[data-view-id=detail-panel] .detail-panel,
+[data-view-id=detail-panel] .detail-panel-container {
+  background: transparent !important;
+}
+[data-view-id=detail-panel] .detail-main__body,
+[data-view-id=detail-panel] .detail-main__header,
+[data-view-id=detail-panel] [class*=codePreviewContainer],
+[data-view-id=detail-panel] .monaco-editor,
+[data-view-id=detail-panel] .monaco-editor-background,
+[data-view-id=detail-panel] .monaco-editor .margin,
+[data-view-id=detail-panel] .monaco-editor .minimap {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* md/文件预览（.file-viewer）：容器透化；内部代码块与表格保留 40% 表面色浮层——
+   全透明会失去「块」的边界辨识度，纯白又完全盖住壁纸（CDP 实测 rgb(255,255,255)）。
+   空标签页 landing（.detail-new-tab-landing）同为纯白整版，一并透化 */
+[data-view-id=detail-panel] .file-viewer,
+[data-view-id=detail-panel] .detail-new-tab-landing {
+  background: transparent !important;
+}
+[data-view-id=detail-panel] .cb-markdown-pre,
+[data-view-id=detail-panel] .file-viewer table {
+  background: color-mix(in srgb, var(--wb-surface) 40%, transparent) !important;
 }
 
 /* 首页/空会话主标题：主题色渐变文字（accent→secondary，随主题/自定义取色自适应）。
@@ -200,12 +233,12 @@ ${buildVariableOverrides(colors)}
 
 /* 会话/详情页壁纸降噪：菜单脚本按路由维护 body[data-wb-skin-page]（home=新建任务页、
    chat=会话/详情页，机制同 TDP 主题 skin.js 的 data-tdp-page）。chat 时在原三层背景之上
-   叠 65% 表面色纱罩（CSS 多背景首层在最上），壁纸仍清晰可辨，文字可读性由纱罩托底；
+   叠 50% 表面色纱罩（CSS 多背景首层在最上），壁纸清晰可辨，文字可读性由纱罩托底；
    home 或无标记（设置页等）时本规则不匹配，维持全量透出。选择器优先级高于上方 #root
    规则（均带 !important），chat 时整组 background 被本规则替换 */
 body[data-wb-skin-page="chat"] #root {
   background:
-    linear-gradient(0deg, color-mix(in srgb, var(--wb-surface) 65%, transparent), color-mix(in srgb, var(--wb-surface) 65%, transparent)),
+    linear-gradient(0deg, color-mix(in srgb, var(--wb-surface) 50%, transparent), color-mix(in srgb, var(--wb-surface) 50%, transparent)),
     linear-gradient(90deg, color-mix(in srgb, var(--wb-surface) 72%, transparent) 0 14%, transparent 30%),
     linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-surface) 50%, transparent) 85% 100%),
     url(${JSON.stringify(heroDataUrl)}) right center / cover no-repeat fixed !important;
