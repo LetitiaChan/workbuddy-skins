@@ -355,6 +355,13 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 - [smartcai87/workbuddy-dream-skin](https://github.com/smartcai87/workbuddy-dream-skin) — 4 款内置主题「极光之夜 / 静谧星空 / 液态玻璃 · 亮 / 液态玻璃 · 暗」的壁纸与配色迁移自该项目（MIT）
 - [zhangxiaoqiang1991/workbuddy-skin-skill](https://github.com/zhangxiaoqiang1991/workbuddy-skin-skill) — 10 套内置配色主题（`focus-night` / `warm-paper` / `cyber-lobster` / `stage-aurora` / `rose-glam` / `silver-idol` / `sakura-dream` / `mecha-core` / `magical-night` / `pixel-campus`）的配色与主内容区签名渐变迁移自该项目（MIT）；其 CSS 面向旧版本 DOM 类名，迁移后改为 `buildPaletteCss` 基座（--cb-* 变量覆盖）+ 装饰层（签名渐变）两层结构适配当前版本
 
+## 🤝 参与贡献
+
+欢迎一切形式的参与：
+
+- **发现 bug 或有想法**：直接开 [Issue](https://github.com/LetitiaChan/workbuddy-skins/issues)，附上 WorkBuddy 版本、操作系统和复现步骤（有截图更好）
+- **想改代码 / 加主题**：Fork 本仓库后提 Pull Request。改动前跑一遍 `npm test` 确认无回归；新增主题请参考 [📐 极简主题格式](#-极简主题格式) 一节，并在 `npm test` 的内置主题护栏下通过校验
+
 ## 📜 许可与素材
 
 代码使用 [MIT License](LICENSE)。预览与预设中的角色、名称和视觉素材权利属于各自权利人（初音未来、原神、鸣潮、火影忍者、恋与深空、高达、吉卜力、瑞克和莫蒂、星际穿越等），仅用于主题概念展示，不由本项目的软件许可证授权。内置主题「梵高 · 星月夜」「莫奈 · 日出印象」「莫奈 · 睡莲」的素材为公有领域画作（梵高《星月夜》1889、莫奈《日出·印象》1872、莫奈《睡莲》系列，作者逝世均已逾 70 年）。
