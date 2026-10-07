@@ -182,7 +182,7 @@ test("reposition：MutationObserver 按 rAF 合帧，不再每次变更都同步
   const script = build();
   // reposition 与定位按钮显隐共用一个 subtree observer，各自内部按 rAF 合帧
   assert.ok(script.includes("new MutationObserver(() => { scheduleReposition(); scheduleNavUpdate(); })"));
-  assert.ok(script.includes("requestAnimationFrame(() => { repositionQueued = false; reposition(); detectPage(); })"));
+  assert.ok(script.includes("requestAnimationFrame(() => { repositionQueued = false; reposition(); detectPage(); reviveVideoLayer(); })"));
   assert.ok(!script.includes("queueMicrotask"));
 });
 
@@ -214,6 +214,22 @@ test("视频重影防护：chat 页且视频已挂载时撤掉 #root 海报帧�
   // 双条件规则：仅 chat 页 + 视频在挂时才撤海报（单视频缺失时海报兜底不受影响）
   assert.ok(script.includes('body[data-wb-skin-page=\\"chat\\"][data-wb-skin-video=\\"on\\"] #root'));
   assert.ok(script.includes("var(--wb-surface) !important;"));
+});
+
+test("视频层自愈：被 React 静默移除后经 rAF 巡检重挂并恢复播放，#root 恢复后从 body 挪回", () => {
+  const script = build();
+  assert.doesNotThrow(() => new Function(script));
+  // 巡检挂在 layoutObserver 的 rAF 合帧回调里（与 reposition/detectPage 同帧），不另开 observer
+  assert.ok(script.includes("reposition(); detectPage(); reviveVideoLayer();"));
+  // 未挂/已切走（videoLayer=null）直接返回；仍在文档时仅纠正挂载点
+  assert.ok(script.includes("if (!videoLayer) return;"));
+  assert.ok(script.includes("if (videoLayer.isConnected) {"));
+  // 脱离文档：重挂（#root 优先、body 兜底）并恢复被 Chromium 自动暂停的播放
+  assert.ok(script.includes("(host ?? document.body).appendChild(videoLayer)"));
+  assert.ok(script.includes("video?.paused"));
+  // hidden 期间 rAF 停摆：恢复可见时主动补一次巡检，并在 teardown 移除监听
+  assert.ok(script.includes('document.addEventListener("visibilitychange", onVisible)'));
+  assert.ok(script.includes('document.removeEventListener("visibilitychange", onVisible)'));
 });
 
 test("按钮拖拽：默认锚定 reposition，拖拽切自由定位并持久化，双击复位", () => {

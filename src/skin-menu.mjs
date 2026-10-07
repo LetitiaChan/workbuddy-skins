@@ -185,13 +185,18 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   const scheduleReposition = () => {
     if (repositionQueued) return;
     repositionQueued = true;
-    requestAnimationFrame(() => { repositionQueued = false; reposition(); detectPage(); });
+    // reviveVideoLayer 在下方声明：回调只可能在脚本同步执行完之后触发（同 scheduleNavUpdate），无 TDZ 问题
+    requestAnimationFrame(() => { repositionQueued = false; reposition(); detectPage(); reviveVideoLayer(); });
   };
   const layoutObserver = new MutationObserver(() => { scheduleReposition(); scheduleNavUpdate(); });
   layoutObserver.observe(document.body, { childList: true, subtree: true });
   // 仍挂到 window：回退到旧版本注入时，旧脚本据此断开本轮观察者
   window.__workbuddySkinLayoutObserver = layoutObserver;
   window.addEventListener("resize", scheduleReposition);
+  // 页面重新可见时补一次巡检：hidden 期间 rAF 停摆，视频层若恰在那时被 React 清除，
+  // 恢复可见后 MutationObserver 无新变更不会触发回调，需主动调度
+  const onVisible = () => { if (!document.hidden) scheduleReposition(); };
+  document.addEventListener("visibilitychange", onVisible);
   // 窗口尺寸变化会移动内容列右缘，定位按钮需一并重算：resize 监听在 scheduleNavUpdate
   // 声明之后注册（见下方导航区），此处直接传引用会踩 TDZ
   reposition();
@@ -791,6 +796,25 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     }).catch((error) => console.warn("WorkBuddy Skin：视频皮肤加载失败（" + theme.id + "）", error));
   };
 
+  // 视频层自愈：视频层 appendChild 进 #root，属 React 管理容器里的外来节点——
+  // React 首渲/整树替换（重启后注入早于 React 首渲的竞态窗口、SPA 路由重建）会把
+  // 它静默移除：无事件、无 observer 回调直达本层，且元素脱离文档时 Chromium 自动
+  // 暂停播放。表现为「重启后背景不动」；挂载标记残留又触发 VIDEO_LAYER_CSS 撤掉
+  // chat 页海报帧兜底，表现为「切详情页背景消失」。layoutObserver 的 rAF 回调每帧
+  // 检查 isConnected，脱离即重挂并恢复播放；兜底挂在 body 时若 #root 已恢复则挪回
+  // （body 上会被 #root 背景盖住）。videoLayer 为 null（未挂/已切走）时直接返回
+  const reviveVideoLayer = () => {
+    if (!videoLayer) return;
+    const host = document.getElementById("root");
+    if (videoLayer.isConnected) {
+      if (host && videoLayer.parentElement !== host) host.appendChild(videoLayer);
+      return;
+    }
+    (host ?? document.body).appendChild(videoLayer);
+    const video = videoLayer.querySelector("video");
+    if (video?.paused) video.play().catch(() => {});
+  };
+
   // 旧格式 colors（扁平 surface/text）按 accent 重算浅/深两套，无损升级；新格式原样返回
   const normalizeColors = (colors) => {
     if (!colors || typeof colors !== "object") return null;
@@ -1347,6 +1371,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     cancelNavAnim();
     window.removeEventListener("resize", scheduleReposition);
     window.removeEventListener("resize", scheduleNavUpdate);
+    document.removeEventListener("visibilitychange", onVisible);
     window.removeEventListener("storage", onStorage);
     document.removeEventListener("keydown", onEscKey, true);
     document.removeEventListener("scroll", scheduleNavUpdate, true);
