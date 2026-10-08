@@ -4,6 +4,7 @@
   "name": "猫鼠 · 夜巡",
   "order": 10,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#E5B268",
     "secondary": "#7F92B4",
