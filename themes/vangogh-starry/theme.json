@@ -3,6 +3,7 @@
   "id": "vangogh-starry",
   "name": "梵高 · 星月夜",
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#335295",
     "secondary": "#608298",

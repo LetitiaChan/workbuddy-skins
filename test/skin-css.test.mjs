@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildPaletteCss, buildSkinCss } from "../src/skin-css.mjs";
+import { buildMascotCss, buildPaletteCss, buildSkinCss } from "../src/skin-css.mjs";
 
 const HERO = "data:image/webp;base64,aGVsbG8=";
 const baseTheme = {
@@ -11,14 +11,26 @@ const baseTheme = {
   copy: null,
 };
 
-test("标题样式：主标题走 accent→secondary 渐变文字，drop-shadow 光晕按字形描边", () => {
+test("标题样式：主标题走 accent→secondary 渐变文字，自适应反差光晕保证繁忙壁纸可读性", () => {
   const css = buildSkinCss({ theme: baseTheme, heroDataUrl: HERO });
   assert.ok(css.includes(".wb-home-header__title"));
   assert.ok(css.includes(".colleague-chat-empty-profile__title"));
   assert.ok(css.includes("linear-gradient(135deg, var(--wb-accent), var(--wb-secondary))"));
   assert.ok(css.includes("-webkit-text-fill-color: transparent"));
-  // 不用 text-shadow（透明填充会透字形发脏），用 filter 描光晕
-  assert.ok(css.includes("filter: drop-shadow(0 1px 6px var(--wb-surface))"));
+  // 贴纸式实心轮廓：4 正方向 0 模糊 drop-shadow 勾出 1px 实边（级联自动补齐对角，
+  // 8 方向会级联膨胀到 3 倍半径）+ 低透明软晕托底；清掉原生 text-shadow 防重影——
+  // 透明渐变填充上唯一不透字形发脏的勾边方案（text-shadow 透字形、text-stroke 吃边缘、
+  // 纯模糊光晕无边界在繁忙壁纸上糊成一片，六主题实测）；轮廓色 --wb-halo 随渐变亮度
+  // 自适应黑/白，全 var() 引用，自定义皮肤哨兵替换后仍按真实取色计算
+  const titleBlock = css.slice(css.indexOf(".wb-home-header__title"), css.indexOf("}", css.indexOf(".wb-home-header__title")));
+  assert.ok(titleBlock.includes("drop-shadow(1px 0 0 var(--wb-halo))"));
+  assert.ok(titleBlock.includes("drop-shadow(0 -1px 0 var(--wb-halo))"));
+  assert.ok(titleBlock.includes("text-shadow: none !important"));
+  assert.ok(titleBlock.includes("color-mix(in srgb, var(--wb-halo) 35%, transparent)"));
+  assert.ok(!titleBlock.includes("-webkit-text-stroke"), "描边方案已废弃，不应再含 text-stroke");
+  assert.ok(!/#[0-9a-f]{3,8}\b/i.test(titleBlock), "轮廓色不应硬编码色值");
+  // --wb-halo 定义：oklch 相对色语法取渐变中点亮度自适应黑/白
+  assert.ok(css.includes("--wb-halo: oklch(from color-mix(in oklch, var(--wb-accent), var(--wb-secondary))"));
 });
 
 test("主题标语：copy.tagline 配置时输出渐变标语，未配置时不注入文案", () => {
@@ -64,23 +76,26 @@ test("会话/详情页壁纸降噪：chat 页标记时 #root 叠 50% 表面色�
 
 test("详情面板内部透化：文件预览/Monaco 编辑器白底透明，由壳层磨砂托底", () => {
   const css = buildSkinCss({ theme: baseTheme, heroDataUrl: HERO });
-  // 内层组件、代码预览容器（哈希类子串匹配）与 Monaco 各背景层全部透化
-  // （CDP 实测原生均为不透明 rgb(255,255,255)）
-  assert.ok(css.includes("[data-view-id=detail-panel] .detail-panel,"));
-  assert.ok(css.includes("[data-view-id=detail-panel] .detail-main__body,"));
-  assert.ok(css.includes("[data-view-id=detail-panel] [class*=codePreviewContainer],"));
-  assert.ok(css.includes("[data-view-id=detail-panel] .monaco-editor,"));
-  assert.ok(css.includes("[data-view-id=detail-panel] .monaco-editor .minimap"));
+  // 壳层磨砂同时覆盖 detail-panel 与自动化产物面板（artifact-panel 复用 detail-* 同族组件）
+  assert.ok(css.includes("[data-view-id=detail-panel],\n[class*=artifact-panel] {"));
+  // 内层组件、代码预览容器（哈希类子串匹配）、块编辑器与 Monaco 各背景层全部透化
+  // （CDP 实测原生均为不透明 rgb(255,255,255)），作用域为 :is(双宿主)
+  const host = ":is([data-view-id=detail-panel], [class*=artifact-panel])";
+  assert.ok(css.includes(host + " .detail-panel,"));
+  assert.ok(css.includes(host + " .detail-main__body,"));
+  assert.ok(css.includes(host + " [class*=codePreviewContainer],"));
+  assert.ok(css.includes(host + " .sc-editor,"));
+  assert.ok(css.includes(host + " .monaco-editor,"));
+  assert.ok(css.includes(host + " .monaco-editor .margin,"));
+  assert.ok(css.includes(host + " .monaco-editor .minimap"));
   // md/文件预览：容器透化，代码块/表格 40% 表面色浮层（保边界辨识度）
-  assert.ok(css.includes("[data-view-id=detail-panel] .file-viewer,"));
-  assert.ok(css.includes("[data-view-id=detail-panel] .detail-new-tab-landing"));
-  assert.ok(css.includes("[data-view-id=detail-panel] .cb-markdown-pre,"));
-  assert.ok(css.includes("[data-view-id=detail-panel] .file-viewer table"));
-  assert.ok(css.includes("[data-view-id=detail-panel] .monaco-editor .margin,"));
-  assert.ok(css.includes("[data-view-id=detail-panel] .monaco-editor .minimap"));
+  assert.ok(css.includes(host + " .file-viewer,"));
+  assert.ok(css.includes(host + " .detail-new-tab-landing"));
+  assert.ok(css.includes(host + " .cb-markdown-pre,"));
+  assert.ok(css.includes(host + " .file-viewer table"));
   // 配色主题同块生效：根层实底 surface，透明后颜色一致（不回归）
   const palette = buildPaletteCss({ theme: baseTheme });
-  assert.ok(palette.includes("[data-view-id=detail-panel] .monaco-editor-background,"));
+  assert.ok(palette.includes(host + " .monaco-editor-background,"));
 });
 
 test("「为你推荐」技能推荐条：原生不透明白条改为磨砂半透明，全 var() 引用", () => {
@@ -108,6 +123,23 @@ test("首页快捷 chips 与滚动渐隐：白底/白色渐变改为皮肤表面
   assert.ok(!fadeBlock.includes("#fff"), "滚动渐隐不应硬编码白色");
 });
 
+test("侧栏一级树行：透化常驻实底块、悬停走文字色洗底，图片/配色主题共用", () => {
+  for (const css of [buildSkinCss({ theme: baseTheme, heroDataUrl: HERO }), buildPaletteCss({ theme: baseTheme })]) {
+    const header = 'body[data-application-name=workbuddy] .conversation-section-content [class*="collapsibleSection"] > [class*="header"] {\n  background: transparent !important;';
+    const hover = 'body[data-application-name=workbuddy] .conversation-section-content [class*="collapsibleSection"] > [class*="headerClickable"]:hover {\n  background: var(--wb-todo-menu-bg-hover) !important;';
+    assert.ok(css.includes(header), "一级树行常态应透明（原生钉 --wb-sidebar-bg 实底，磨砂侧栏上成浅色块）");
+    assert.ok(css.includes(hover), "一级树行悬停应为文字色洗底");
+  }
+});
+
+test("已发出对话气泡：--cr-user-bubble-bg 钉为文字色洗底（.cr-theme 作用域），图片/配色主题共用", () => {
+  for (const css of [buildSkinCss({ theme: baseTheme, heroDataUrl: HERO }), buildPaletteCss({ theme: baseTheme })]) {
+    // 原生暗色 #ffffff1a / 亮色近实底白卡会糊住壁纸；变量声明在 :root/.cr-theme 上，
+    // 气泡祖先链带 .cr-theme.conversation-timeline，body 级覆盖会被更近继承层截胡
+    assert.ok(css.includes(".cr-theme {\n  --cr-user-bubble-bg: color-mix(in srgb, var(--wb-text) 16%, transparent) !important;\n}"), "气泡底色应为 .cr-theme 作用域的文字色 16% 洗底");
+  }
+});
+
 // ---- buildPaletteCss：配色主题（无图纯配色）换色基座 ----
 
 test("配色主题基座：与图片主题共享同一 --cb-* 变量覆盖块（防模板漂移）", () => {
@@ -121,6 +153,9 @@ test("配色主题基座：与图片主题共享同一 --cb-* 变量覆盖块（
   assert.ok(palette.includes("--wb-surface: #F5F6F8"));
   assert.ok(palette.includes("--cb-bg-primary: var(--wb-surface) !important"));
   assert.ok(palette.includes("--cb-text-link: var(--wb-accent) !important"));
+  // 悬停洗底钉为文字色自适应（原生 #fff 8% 白洗底在浅色皮肤侧栏上隐形，一级树行 hover 不可见）
+  assert.ok(palette.includes("--wb-todo-menu-bg-hover: color-mix(in srgb, var(--wb-text) 10%, transparent) !important"));
+  assert.ok(palette.includes("--cb-hover-bg: color-mix(in srgb, var(--wb-text) 8%, transparent) !important"));
 });
 
 test("配色主题基座：无 hero 实底表面，容器透化透出根层，侧边栏文字色微浮层", () => {
@@ -155,4 +190,18 @@ test("配色主题基座：非法色值拒绝，id 消毒与图片主题同规�
   assert.throws(() => buildPaletteCss({ theme: { ...baseTheme, colors: { accent: "red" } } }), /无效主题颜色/);
   const css = buildPaletteCss({ theme: { ...baseTheme, id: "Focus Night!!" } });
   assert.ok(css.includes("WORKBUDDY_PALETTE:FocusNight"));
+});
+
+test("成长伙伴形象替换：content:url 换图 + contain 入框 + 隐藏悬停动图，首页/会话页双槽位", () => {
+  const MASCOT = "data:image/webp;base64,bWFzY290";
+  // 未配置 mascot 时返回空串（未配置主题不输出本块，原生机器人保留）
+  assert.equal(buildMascotCss(null), "");
+  assert.equal(buildMascotCss(undefined), "");
+  const css = buildMascotCss(MASCOT);
+  assert.ok(css.includes(".wb-home-route__growth-buddy"));
+  assert.ok(css.includes(".conversation-input__growth-buddy"));
+  assert.ok(css.includes(`content: url(${JSON.stringify(MASCOT)}) !important`));
+  assert.ok(css.includes("object-fit: contain !important"));
+  assert.ok(css.includes("video"), "悬停动图 video 应被隐藏，避免盖回原生动画");
+  assert.throws(() => buildMascotCss("https://evil.example/x.png"), /mascot 必须是/);
 });

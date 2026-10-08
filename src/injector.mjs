@@ -3,7 +3,7 @@ import { extname, isAbsolute, relative, resolve, sep, win32 } from "node:path";
 
 import { CdpSession, fetchRendererTargets, waitForRendererTargets } from "./cdp-client.mjs";
 import { BASE64_DECODE_SNIPPET, IDB_OPEN_SNIPPET, VIDEO_DB_LITERALS } from "./renderer-snippets.mjs";
-import { buildPaletteCss, buildSkinCss } from "./skin-css.mjs";
+import { buildMascotCss, buildPaletteCss, buildSkinCss } from "./skin-css.mjs";
 import { buildSkinMenuScript, CSS_SENTINELS, TEARDOWN_GLOBAL, VIDEO_LAYER_CSS } from "./skin-menu.mjs";
 import { probeAnimatedSize } from "./theme-store.mjs";
 
@@ -126,10 +126,21 @@ async function thumbnailDataUrl(loadedTheme) {
   return `data:${mime};base64,${bytes.toString("base64")}`;
 }
 
+// theme.json mascot：读为 data URL 生成「成长伙伴」替换 CSS 块，拼在该主题条目 css 末尾。
+// 与 thumbnail 同理随菜单脚本下发（体积上限已由 loadTheme 校验）；未配置返回空串，
+// 主题 CSS 不含替换规则，原生机器人原样保留。图片/视频与纯 CSS 主题走同一条拼接路径
+async function mascotCssBlock(loadedTheme) {
+  if (!loadedTheme.mascotPath) return "";
+  const mime = MIME[extname(loadedTheme.mascotPath).toLowerCase()];
+  if (!mime) throw new Error(`主题 ${loadedTheme.manifest.id} 的 mascot 图片类型不受支持`);
+  const bytes = await readFile(loadedTheme.mascotPath);
+  return buildMascotCss(`data:${mime};base64,${bytes.toString("base64")}`);
+}
+
 async function themeEntry(loadedTheme) {
   const entry = await themeEntryBody(loadedTheme);
-  const thumb = await thumbnailDataUrl(loadedTheme);
-  return thumb ? { ...entry, thumb } : entry;
+  const [thumb, mascot] = await Promise.all([thumbnailDataUrl(loadedTheme), mascotCssBlock(loadedTheme)]);
+  return { ...entry, css: entry.css + mascot, ...(thumb ? { thumb } : {}) };
 }
 
 async function themeEntryBody(loadedTheme) {

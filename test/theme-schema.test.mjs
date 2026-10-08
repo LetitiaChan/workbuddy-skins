@@ -250,6 +250,43 @@ test("thumbnail：可选，任意主题可配，路径必须是目录内图片",
   }
 });
 
+test("mascot：可选，图片/视频/CSS 主题均可配，路径必须是目录内图片", () => {
+  assert.equal(validateThemeManifest(base).mascot, null);
+  assert.equal(validateThemeManifest({ ...base, mascot: "mascot.webp" }).mascot, "mascot.webp");
+  // 视频主题（hero.mp4 + poster）与纯 CSS 主题同样允许
+  assert.equal(
+    validateThemeManifest({ ...base, hero: "hero.mp4", poster: "poster.png", mascot: "m.webp" }).mascot,
+    "m.webp",
+  );
+  assert.equal(
+    validateThemeManifest({ schemaVersion: 1, id: "css-theme", name: "CSS", css: "skin.css", mascot: "m.webp" }).mascot,
+    "m.webp",
+  );
+  for (const mascot of ["../m.webp", "C:/m.webp", "", "m.mp4", "m.svg"]) {
+    assert.throws(
+      () => validateThemeManifest({ ...base, mascot }),
+      /theme mascot must be/,
+      `mascot=${JSON.stringify(mascot)}`,
+    );
+  }
+});
+
+test("loadTheme：解析 mascotPath，缺失或超过体积上限时拒绝", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(join(dir, "hero.png"), Buffer.alloc(16, 1));
+    await writeFile(
+      join(dir, "theme.json"),
+      JSON.stringify({ schemaVersion: 1, id: "demo-theme", name: "Demo", hero: "hero.png", mascot: "mascot.webp" }),
+    );
+    await assert.rejects(loadTheme(dir));
+    await writeFile(join(dir, "mascot.webp"), Buffer.alloc(1024, 1));
+    const loaded = await loadTheme(dir);
+    assert.ok(loaded.mascotPath.endsWith("mascot.webp"));
+    await writeFile(join(dir, "mascot.webp"), Buffer.alloc(256 * 1024 + 1, 1));
+    await assert.rejects(loadTheme(dir), /mascot exceeds/);
+  });
+});
+
 test("loadTheme：解析 thumbnailPath，缺失或超过体积上限时拒绝", async () => {
   await withTempDir(async (dir) => {
     await writeFile(join(dir, "skin.css"), "body { color: red; }");
@@ -265,3 +302,4 @@ test("loadTheme：解析 thumbnailPath，缺失或超过体积上限时拒绝", 
     await assert.rejects(loadTheme(dir), /thumbnail exceeds/);
   });
 });
+

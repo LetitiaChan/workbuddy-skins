@@ -20,6 +20,28 @@ function copy(value, fallback = "") {
   return JSON.stringify(typeof value === "string" ? value : fallback);
 }
 
+// 渐变标题轮廓/光晕色：随渐变中点（accent+secondary 各半）的 oklch 亮度自适应取黑/白——
+// 亮色渐变文字配黑轮廓、暗色渐变文字配白轮廓，与文字恒有反差。clamp 陡阶跃近似阈值
+// 分支（CSS 无条件语句），0.55 为感知亮度分界；全 var() 引用，自定义皮肤哨兵
+// 替换后在渲染进程按真实取色计算，明暗自适应对自定义主题同样生效
+const GRADIENT_TEXT_HALO =
+  "oklch(from color-mix(in oklch, var(--wb-accent), var(--wb-secondary)) clamp(0, calc((0.55 - l) * 1000 + 0.5), 1) 0 h)";
+
+// 贴纸式文字轮廓滤镜：4 个正方向 0 模糊 drop-shadow 叠出实心轮廓——链式复合时后层
+// 把前层剪影一起偏移，(±1,±1) 对角由两正方向级联自动补齐，轮廓半径恰为 size；
+// 不可用 8 方向：对角方向参与级联会使轮廓膨胀到 3 倍半径，小字上糊成一团。
+// 末端叠一层低透明软晕托底。对透明渐变填充的文字，这是唯一既能勾出利落字边又不
+// 透字形发脏的方案——text-shadow 透字形显脏、-webkit-text-stroke 吃字形边缘、
+// 纯模糊光晕无明确边界，在繁忙壁纸上都与墙纸噪点糊成一片（六个主题实测均不清晰）
+function haloOutline(size, blur, opacity = 0.35) {
+  const fmt = (v) => (v === 0 ? "0" : `${v}px`);
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const outline = dirs
+    .map(([x, y]) => `drop-shadow(${fmt(x * size)} ${fmt(y * size)} 0 var(--wb-halo))`)
+    .join(" ");
+  return `${outline} drop-shadow(0 ${size + 1}px ${blur}px color-mix(in srgb, var(--wb-halo) ${Math.round(opacity * 100)}%, transparent))`;
+}
+
 // ---- 共享模板片段：图片主题（buildSkinCss）与配色主题（buildPaletteCss）同源，防漂移 ----
 
 // --cb-* 设计变量覆盖块：WorkBuddy renderer 的全局换色核心（60+ 变量，accent/secondary/
@@ -30,6 +52,8 @@ function buildVariableOverrides(colors) {
   --wb-secondary: ${colors.secondary};
   --wb-surface: ${colors.surface};
   --wb-text: ${colors.text};
+  /* 渐变标题轮廓色：随渐变中点亮度自适应黑/白，与文字恒为对立极 */
+  --wb-halo: ${GRADIENT_TEXT_HALO};
 
   /* 背景 */
   --cb-bg-primary: var(--wb-surface) !important;
@@ -73,6 +97,14 @@ function buildVariableOverrides(colors) {
   --wb-sidebar-bg: var(--wb-surface) !important;
   --cb-sidebar-bg: var(--wb-surface) !important;
 
+  /* 悬停洗底：原生 --wb-todo-menu-bg-hover / --cb-hover-bg 固定 #fff 8%/6% 白洗底
+     （深色原生界面的配套值），浅色皮肤的白磨砂侧栏上完全隐形——侧栏一级树行
+     （.collapsible-section-header:hover 读这两个变量）看不到悬停背景，二级
+     .cb-agent-card 自带卡片底色所以不受影响。钉为文字色洗底：文字色恒为表面
+     对立极，浅色主题得灰洗底、深色主题得白洗底，明暗双向自适应 */
+  --wb-todo-menu-bg-hover: color-mix(in srgb, var(--wb-text) 10%, transparent) !important;
+  --cb-hover-bg: color-mix(in srgb, var(--wb-text) 8%, transparent) !important;
+
   /* 按钮 */
   --cb-button-dark-background: var(--wb-accent) !important;
   --cb-button-dark-foreground: #ffffff !important;
@@ -84,6 +116,17 @@ function buildVariableOverrides(colors) {
   /* 描边 */
   --cb-stroke-secondary: color-mix(in srgb, var(--wb-accent) 45%, transparent) !important;
   --cb-markdown-hr-border-color: color-mix(in srgb, var(--wb-accent) 30%, transparent) !important;
+}
+
+/* 已发出对话气泡（.cr-self-bubble 读 --cr-user-bubble-bg，CDP 实测）：原生暗色模式
+   #ffffff1a（白 10%）、亮色模式近实底白卡，皮肤下都会糊住壁纸。该变量声明在
+   :root/.cr-theme 上，而气泡祖先链带 .cr-theme.conversation-timeline——body 级覆盖会被
+   更近的 .cr-theme 继承层截胡，故直接钉在 .cr-theme 作用域。取值同 hover 洗底哲学
+   （文字色恒为表面对立极）：浅色主题得灰透卡、深色主题得白透卡。浓度 16% 是用户
+   定稿（8% 过透失卡片感、12% 仍偏透、16% 卡片感与透出兼顾）；
+   文字可读性由会话页 50% 纱罩托底；first-paint 占位气泡读同一变量，一并生效 */
+.cr-theme {
+  --cr-user-bubble-bg: color-mix(in srgb, var(--wb-text) 16%, transparent) !important;
 }`;
 }
 
@@ -139,28 +182,32 @@ function buildComponentAccents() {
   color: var(--wb-text) !important;
 }
 
-/* 详情面板半透明磨砂：60% 让壁纸可辨（88% 时右侧栏几乎完全不透，见 --cb-panel-bg-primary） */
-[data-view-id=detail-panel] {
+/* 详情面板半透明磨砂：60% 让壁纸可辨（88% 时右侧栏几乎完全不透，见 --cb-panel-bg-primary）。
+   作用域同时覆盖自动化产物面板（aside.automation-run-group__artifact-panel，挂在
+   main-content 内、复用 detail-* 同族组件，CDP 实测其链路与 detail-panel 一致） */
+[data-view-id=detail-panel],
+[class*=artifact-panel] {
   background: color-mix(in srgb, var(--wb-surface) 60%, transparent) !important;
   backdrop-filter: blur(18px) saturate(1.08);
 }
 
-/* 详情面板内部：文件预览/代码编辑器的原生不透明白底会盖住壁纸（CDP 实测内层
-   .detail-panel、.detail-main__body、代码预览容器（CSS module 哈希类，子串匹配）
-   与 Monaco 的 .monaco-editor 容器/.monaco-editor-background/.margin/.minimap
+/* 面板内部：文件预览/代码编辑器/块编辑器的原生不透明白底会盖住壁纸（CDP 实测内层
+   .detail-panel、.detail-main__body、代码预览容器（CSS module 哈希类，子串匹配）、
+   md 块编辑器 .sc-editor 与 Monaco 的 .monaco-editor 容器/.monaco-editor-background/.margin/.minimap
    均为 rgb(255,255,255)）。透化后由壳层 60% 磨砂+模糊托底保可读性，文字前景色独立不受影响；
    配色主题根层为实底 surface，透明后颜色与原来一致 */
-[data-view-id=detail-panel] .detail-panel,
-[data-view-id=detail-panel] .detail-panel-container {
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .detail-panel,
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .detail-panel-container {
   background: transparent !important;
 }
-[data-view-id=detail-panel] .detail-main__body,
-[data-view-id=detail-panel] .detail-main__header,
-[data-view-id=detail-panel] [class*=codePreviewContainer],
-[data-view-id=detail-panel] .monaco-editor,
-[data-view-id=detail-panel] .monaco-editor-background,
-[data-view-id=detail-panel] .monaco-editor .margin,
-[data-view-id=detail-panel] .monaco-editor .minimap {
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .detail-main__body,
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .detail-main__header,
+:is([data-view-id=detail-panel], [class*=artifact-panel]) [class*=codePreviewContainer],
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .sc-editor,
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .monaco-editor,
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .monaco-editor-background,
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .monaco-editor .margin,
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .monaco-editor .minimap {
   background: transparent !important;
   background-color: transparent !important;
 }
@@ -168,18 +215,36 @@ function buildComponentAccents() {
 /* md/文件预览（.file-viewer）：容器透化；内部代码块与表格保留 40% 表面色浮层——
    全透明会失去「块」的边界辨识度，纯白又完全盖住壁纸（CDP 实测 rgb(255,255,255)）。
    空标签页 landing（.detail-new-tab-landing）同为纯白整版，一并透化 */
-[data-view-id=detail-panel] .file-viewer,
-[data-view-id=detail-panel] .detail-new-tab-landing {
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .file-viewer,
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .detail-new-tab-landing {
   background: transparent !important;
 }
-[data-view-id=detail-panel] .cb-markdown-pre,
-[data-view-id=detail-panel] .file-viewer table {
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .cb-markdown-pre,
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .file-viewer table {
   background: color-mix(in srgb, var(--wb-surface) 40%, transparent) !important;
 }
 
+/* 侧栏一级树行（空间名，.collapsible-section-header）常驻底块：原生规则
+   .conversation-section-content [class*=collapsibleSection] > [class*=header]
+   { background: var(--wb-sidebar-bg) !important } 按「侧栏实底」设计——同色即隐形；
+   皮肤侧栏为 78% 磨砂半透明（配色主题为 surface+文字色浮层），该行却是不透明 surface，
+   每个空间名呈一块常驻浅色底块，二级任务行（.cb-agent-card）无此底块，层级观感错乱。
+   这些行 position:static 非吸顶，无需实底遮挡滚动内容，透化即与侧栏融为一体；
+   悬停沿用 --wb-todo-menu-bg-hover（文字色洗底，明暗自适应）。body 前缀抬优先级，
+   压过原生同为 !important 的常态 (0,3,0) 与悬停 (0,4,0) 规则，不依赖样式表注入顺序。
+   吸顶分组标题（.conversation-section-label，「任务」「空间」）需实底遮挡滚动内容，保留 */
+body[data-application-name=workbuddy] .conversation-section-content [class^="collapsible-section"] > [class*="header"],
+body[data-application-name=workbuddy] .conversation-section-content [class*="collapsibleSection"] > [class*="header"] {
+  background: transparent !important;
+}
+body[data-application-name=workbuddy] .conversation-section-content [class^="collapsible-section"] > [class*="headerClickable"]:hover,
+body[data-application-name=workbuddy] .conversation-section-content [class*="collapsibleSection"] > [class*="headerClickable"]:hover {
+  background: var(--wb-todo-menu-bg-hover) !important;
+}
+
 /* 首页/空会话主标题：主题色渐变文字（accent→secondary，随主题/自定义取色自适应）。
-   不用 text-shadow 而用 filter:drop-shadow —— 透明填充文字上 text-shadow 会透过字形
-   显影发脏，drop-shadow 按字形 alpha 描光晕，繁忙壁纸上依然可读 */
+   可读性靠贴纸式实心轮廓（见 haloOutline）：1px 黑/白实边利落切出字形，半透软晕托底；
+   轮廓色 --wb-halo 随渐变亮度自适应黑/白，与文字恒为对立极 */
 .wb-home-header__title,
 .claw-agent-chat-pane .colleague-chat-empty-profile__title {
   background: linear-gradient(135deg, var(--wb-accent), var(--wb-secondary)) !important;
@@ -188,7 +253,9 @@ function buildComponentAccents() {
   color: transparent !important;
   -webkit-text-fill-color: transparent !important;
   font-weight: 750 !important;
-  filter: drop-shadow(0 1px 6px var(--wb-surface));
+  /* 清掉原生 text-shadow：drop-shadow 作用于元素最终渲染结果，残留阴影会被一起勾勒成重影 */
+  text-shadow: none !important;
+  filter: ${haloOutline(1, 6)};
 }
 
 /* 左上角 WorkBuddy 字标变身（参照 TDP 的双色 SVG 字标）：硬切渐变实现双色——
@@ -204,6 +271,29 @@ function buildComponentAccents() {
   font-weight: 800 !important;
   letter-spacing: -.4px;
 }`;
+}
+
+// 「成长伙伴」替换形象块（theme.json mascot，可选）：首页/会话页输入框上方的机器人槽位
+// （growth-buddy，原生结构 = 容器内 140px img[thumbnail_url] + 悬停播放的 video[base_animated_url]）。
+// Chromium 下 img 的 content:url() 整体替换显示内容，原 src 不再渲染；object-fit 钉 contain
+// 让透明底形象完整入框（原生 cover 会按 120px 容器裁切）；悬停动图 video 隐藏，
+// 避免悬停时盖回原生动画。未配置 mascot 的主题不输出本块，原生机器人原样保留
+export function buildMascotCss(mascotDataUrl) {
+  if (mascotDataUrl === null || mascotDataUrl === undefined) return "";
+  if (!/^data:image\/(?:png|jpeg|webp|gif|avif);base64,[a-z0-9+/=]+$/i.test(mascotDataUrl)) {
+    throw new Error("mascot 必须是本地 PNG、JPEG、WebP、GIF 或 AVIF 数据");
+  }
+  return `
+/* 「成长伙伴」形象替换（growth-buddy 槽位：首页 wb-home-route__growth-buddy、
+   会话页 conversation-input__growth-buddy，均在输入框上方右侧） */
+:is(.wb-home-route__growth-buddy, .conversation-input__growth-buddy) img {
+  content: url(${JSON.stringify(mascotDataUrl)}) !important;
+  object-fit: contain !important;
+}
+:is(.wb-home-route__growth-buddy, .conversation-input__growth-buddy) video {
+  display: none !important;
+}
+`;
 }
 
 export function buildSkinCss({ theme, heroDataUrl }) {
@@ -334,7 +424,8 @@ ${theme.copy?.tagline ? `
   -webkit-text-fill-color: transparent;
   font: 600 15px/1.5 ui-rounded, system-ui;
   letter-spacing: .3px;
-  filter: drop-shadow(0 1px 4px var(--wb-surface));
+  text-shadow: none !important;
+  filter: ${haloOutline(1, 4)};
 }
 ` : ""}`;
 }

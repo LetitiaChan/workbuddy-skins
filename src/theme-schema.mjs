@@ -11,6 +11,7 @@ import {
 
 import {
   IMAGE_EXTENSIONS,
+  MAX_THEME_MASCOT_BYTES,
   MAX_THEME_THUMBNAIL_BYTES,
   MAX_THEME_VIDEO_BYTES,
   THEME_SCHEMA_VERSION,
@@ -114,6 +115,13 @@ function normalizeThumbnail(thumbnail) {
   return normalizeMediaPath(thumbnail, "thumbnail", IMAGE_EXTENSIONS, "PNG, JPEG, WebP, GIF, or AVIF");
 }
 
+// 「成长伙伴」替换形象（可选，任意主题可用）：首页/会话页输入框上方的机器人图片
+// （growth-buddy 槽位）替换为主题形象；未配置时保留 WorkBuddy 原生机器人
+function normalizeMascot(mascot) {
+  if (mascot === undefined || mascot === null) return null;
+  return normalizeMediaPath(mascot, "mascot", IMAGE_EXTENSIONS, "PNG, JPEG, WebP, GIF, or AVIF");
+}
+
 function normalizeColors(colors) {
   if (colors != null && !isRecord(colors)) {
     throw new Error("theme colors must be an object");
@@ -175,6 +183,7 @@ export function validateThemeManifest(input) {
     js: normalizeJs(input.js, css !== null),
     group: normalizeGroup(input.group, css !== null),
     thumbnail: normalizeThumbnail(input.thumbnail),
+    mascot: normalizeMascot(input.mascot),
     colors: normalizeColors(input.colors),
     copy: normalizeCopy(input.copy),
   };
@@ -231,6 +240,14 @@ export async function loadTheme(themeDir) {
   if (thumbnail && thumbnail.size > MAX_THEME_THUMBNAIL_BYTES) {
     throw new Error(`theme thumbnail exceeds the ${MAX_THEME_THUMBNAIL_BYTES / 1024}KB limit`);
   }
+  // mascot 形象图以 data URL 内联进该主题的 CSS 条目随菜单脚本下发；
+  // 原生槽位仅 140px 见方，比 thumbnail 卡得更小
+  const mascot = manifest.mascot
+    ? await resolveMediaFile(dirs, manifest.mascot, "mascot")
+    : null;
+  if (mascot && mascot.size > MAX_THEME_MASCOT_BYTES) {
+    throw new Error(`theme mascot exceeds the ${MAX_THEME_MASCOT_BYTES / 1024}KB limit`);
+  }
 
   return {
     manifest,
@@ -239,6 +256,7 @@ export async function loadTheme(themeDir) {
     cssPath: css?.path ?? null,
     jsPath: js?.path ?? null,
     thumbnailPath: thumbnail?.path ?? null,
+    mascotPath: mascot?.path ?? null,
     root,
   };
 }

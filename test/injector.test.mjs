@@ -280,6 +280,33 @@ test("applySkin：CSS 主题资源内联为 data URL，菜单分组为 custom", 
   });
 });
 
+test("applySkin：图片主题配置 mascot 时内联挂件图并拼接成长伙伴替换规则", async () => {
+  await withTempDir(async (dir) => {
+    const png = Buffer.from("89504e470d0a1a0a", "hex");
+    await writeFile(join(dir, "hero.png"), png);
+    await writeFile(join(dir, "mascot.webp"), Buffer.from("mascot-bytes"));
+    const imageTheme = {
+      manifest: { id: "img", name: "Img", colors: {} },
+      heroPath: join(dir, "hero.png"),
+      posterPath: null,
+      mascotPath: join(dir, "mascot.webp"),
+      root: dir,
+    };
+    const { Session, sessions } = sessionFactory();
+    const result = await applySkin({
+      loadedTheme: imageTheme,
+      themes: [imageTheme],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    assert.equal(result.applied, 1);
+    const expression = sessions[0].lastCall();
+    assert.ok(expression.includes("growth-buddy"), "注入 CSS 应含成长伙伴槽位规则");
+    assert.ok(expression.includes(`data:image/webp;base64,${Buffer.from("mascot-bytes").toString("base64")}`), "挂件图应内联为 data URL");
+    assert.ok(expression.includes("object-fit: contain !important"));
+  });
+});
+
 test("applySkin：CSS 主题 manifest.group 为 palette 时前置拼接换色基座，菜单分组透传", async () => {
   await withTempDir(async (dir) => {
     // palette 主题的 skin.css 只是装饰层（签名渐变），基座由 buildPaletteCss 生成
@@ -462,6 +489,59 @@ test("applySkin：theme.json thumbnail 内联为 data URL 随条目下发（thum
     const expression = sessions[0].lastCall();
     const expected = `"thumb":"data:image/webp;base64,${Buffer.from("RIFFxxxxWEBP").toString("base64")}"`;
     assert.ok(expression.includes(expected), "条目应携带 thumbnail data URL");
+  });
+});
+
+test("applySkin：theme.json mascot 内联为 data URL 拼入条目 css（growth-buddy 替换规则）", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(join(dir, "skin.css"), "a { color: red; }");
+    await writeFile(join(dir, "mascot.webp"), Buffer.from("RIFFxxxxWEBP"));
+    const mascotDataUrl = `data:image/webp;base64,${Buffer.from("RIFFxxxxWEBP").toString("base64")}`;
+    const cssTheme = {
+      manifest: { id: "css-theme", name: "CSS", colors: { accent: "#5141F2", surface: "#F5F6F8" } },
+      cssPath: join(dir, "skin.css"),
+      mascotPath: join(dir, "mascot.webp"),
+      root: dir,
+      heroPath: null,
+      posterPath: null,
+    };
+    const { Session, sessions } = sessionFactory();
+    await applySkin({
+      loadedTheme: cssTheme,
+      themes: [cssTheme],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    const expression = sessions[0].lastCall();
+    // 菜单脚本 JSON 序列化后 css 内的双引号转义为 \"
+    assert.ok(expression.includes(".wb-home-route__growth-buddy"), "条目 css 应含 growth-buddy 槽位选择器");
+    assert.ok(
+      expression.includes(`content: url(\\"${mascotDataUrl}\\")`),
+      "条目 css 应内联 mascot data URL",
+    );
+  });
+});
+
+test("applySkin：未配置 mascot 的条目 css 不含 growth-buddy 替换规则（原生机器人保留）", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(join(dir, "skin.css"), "a { color: red; }");
+    const cssTheme = {
+      manifest: { id: "css-theme", name: "CSS", colors: { accent: "#5141F2", surface: "#F5F6F8" } },
+      cssPath: join(dir, "skin.css"),
+      mascotPath: null,
+      root: dir,
+      heroPath: null,
+      posterPath: null,
+    };
+    const { Session, sessions } = sessionFactory();
+    await applySkin({
+      loadedTheme: cssTheme,
+      themes: [cssTheme],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    const expression = sessions[0].lastCall();
+    assert.ok(!expression.includes("growth-buddy"), "未配置 mascot 时不应输出替换规则");
   });
 });
 
