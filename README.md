@@ -60,6 +60,7 @@
 - **动图背景**：GIF、动态 WebP、动态 AVIF 原样注入、保留动画播放（跳过 canvas 重编码，仍用第一帧取色）；动图限 3MB、最长边 1920px（体积为适配 localStorage 配额，分辨率为避免拖慢渲染）
 - **视频背景**：MP4（H.264）抽帧取色，海报帧作 CSS 底图兜底，视频以固定背景层循环静音播放；原始视频存 IndexedDB（不占 localStorage 配额），限 30MB
 - **65 个内置预设**：Miku、原神 ×2、鸣潮 ×2、火影忍者 ×2、恋与深空 ×2、EVA 初号机、黑神话 · 悟空、猫鼠 · 夜巡、小可爱、冷杉雨（MP4 视频）、月夜、温泉雪（MP4 视频）、水墨武士（MP4 视频）、极光之夜、静谧星空、液态玻璃 ×2、梵高 · 星月夜、高达、瑞克和莫蒂、日落山脊、星际穿越、月球、吉卜力（龙猫）、财神 · 清爽、龙珠 ×2（筋斗云 / 超级赛亚人），以及地球之夜、山间小径、林间灯笼、复古机车、竹林深处、海上日落、青绿流体、海岸回廊、墨青波浪、灯塔黄昏、仙女座星系、世界地图、青山明月、蓝色波浪等 14 款风景摄影 / 矢量主题；外加四款整页 CSS 定制主题「QQ 2008 / 腾讯云 TDP（浅色 · 深色）/ Sky Clock · 四时天空（天色随真实时间流转，日出日落）」、6 款场景插画 CSS 风景主题（Aurora · 山野极光 / Dream · 云端梦境 / Forest · 幽林 / Midnight · 子夜 / Paper · 纸韵 / Sakura · 樱吹雪），以及 10 套无图纯配色主题（专注夜色 / 暖纸墨色 / 赛博龙虾 / 舞台极光 / 玫瑰红毯 / 银白偶像 / 樱粉梦境 / 机械核心 / 魔法星夜 / 像素校园，移植自 workbuddy-skin-skill）
+- **成长伙伴形象替换**：39 款内置主题自带 `mascot.webp` 主题形象，替换首页/会话页输入框上方的「成长伙伴」机器人（纯 CSS 整体换图，GIF/动态 WebP 保留动画），随主题切换自动生效/还原；未配置的主题保留原生机器人
 - **深浅色自动适配**：根据主题配色的 surface 明度自动切换 WorkBuddy 的 `data-vscode-theme-kind`，让 VS Code 原生控件（输入框、按钮等）跟着深浅色变
 - **会话页壁纸降噪**：新建任务页壁纸全量透出；进入会话/详情页时菜单脚本自动打 `body[data-wb-skin-page="chat"]` 标记（机制同 TDP 主题的 `data-tdp-page`），图片主题在 `#root` 叠 50% 表面色纱罩、视频主题的视频层压到 35% 不透明度，壁纸仍清晰可辨而对话文字可读；回到首页自动恢复
 - **视频重影防护**：chat 页视频挂载成功时打 `data-wb-skin-video="on"` 标记，`#root` 撤掉海报帧底图只留纱罩盖表面色，避免半透明视频与静态海报帧错位叠出重影；视频缺失时海报兜底照常
@@ -270,10 +271,10 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 
 单元测试覆盖不依赖真实 WorkBuddy 的核心逻辑（用假 CDP Session / 假 WebSocket 与临时目录替代真实依赖，运行 WorkBuddy 与否都能跑通）：
 
-- `test/theme-schema.test.mjs` — 主题清单校验：`poster` 规则（视频 hero 必填、图片 hero 禁填、必须是主题目录内的图片相对路径）、纯 CSS 主题规则（`css` 字段替代 `hero`、无 hero 时禁带 poster）、`dynamicMode` 规则（布尔、须与 `js` 同配）与 `loadTheme` 的 realpath 逃逸防护（junction / symlink）、目录内合法符号链接、清单 JSON 报错带路径
-- `test/injector.test.mjs` — 视频预置链路：4MB 分块切分与暂存清理、写入字节数校验、`Uint8Array.fromBase64` 快路径 + `atob` 回退 + 主线程让出、按尺寸判重跳过、单个渲染进程失败降级为警告、本地文件缺失降级；CSS 主题资源内联（`url(./asset)` → data URL、逃逸目录/不支持类型拒绝、绝对 URL 保留）；`applySkin` 每个渲染进程只开一条会话（视频预置失败时换新连接继续注入）；`removeSkin` 先调菜单 teardown
+- `test/theme-schema.test.mjs` — 主题清单校验：`poster` 规则（视频 hero 必填、图片 hero 禁填、必须是主题目录内的图片相对路径）、纯 CSS 主题规则（`css` 字段替代 `hero`、无 hero 时禁带 poster）、`dynamicMode` 规则（布尔、须与 `js` 同配）、`mascot` 规则（可选、任意类型主题可配、须为目录内图片相对路径，文件缺失按未配置处理、超 256KB 拒绝）与 `loadTheme` 的 realpath 逃逸防护（junction / symlink）、目录内合法符号链接、清单 JSON 报错带路径
+- `test/injector.test.mjs` — 视频预置链路：4MB 分块切分与暂存清理、写入字节数校验、`Uint8Array.fromBase64` 快路径 + `atob` 回退 + 主线程让出、按尺寸判重跳过、单个渲染进程失败降级为警告、本地文件缺失降级；CSS 主题资源内联（`url(./asset)` → data URL、逃逸目录/不支持类型拒绝、绝对 URL 保留）；`applySkin` 每个渲染进程只开一条会话（视频预置失败时换新连接继续注入）；`mascot` 图内联为 data URL 并拼接成长伙伴替换规则（未配置 mascot 的条目不输出该规则）；`removeSkin` 先调菜单 teardown
 - `test/skin-menu.test.mjs` — 🎨 菜单注入脚本：生成脚本可被 JS 引擎编译、切换 / 上传 / 恢复原生各路径的异常兜底与错误日志、大图解码快路径、IndexedDB 阻塞与中止处理、重复注入 / 暂停时的 teardown（断观察者、解除明暗钉住、移除全局监听）、`dynamicMode` 主题跳过钉住（明暗写入权交伴随 js）、布局校准按 rAF 合帧、自定义主题列表缓存、自愈重挂（菜单/样式/定位按钮被框架移除后自动重挂，teardown 先断观察者再移除）、右侧定位按钮（四键齐全、容器/锚点启发式与兜底、平滑滚动、滚轮取消动画、显隐合帧、teardown 拆除）、会话/详情页标记（home/chat 探测与路由切换自动更新、teardown 清除）、视频层降噪（chat 页 35% 不透明度）与重影防护（视频挂载标记同步维护、chat+在挂时撤海报帧）
-- `test/skin-css.test.mjs` — 皮肤 CSS 生成：首页主标题 accent→secondary 渐变文字与 4 向 0 模糊 drop-shadow 实心轮廓（轮廓色 `--wb-halo` 随渐变中点 oklch 亮度自适应黑/白，清掉原生 text-shadow 防重影）、`copy.tagline` 渐变标语（未配置时不注入文案）、左上角字标硬切渐变双色且全 `var()` 引用（自定义取色自动适配，不硬编码色值）、已发出对话气泡透化（`.cr-theme` 作用域 `--cr-user-bubble-bg` 16% 文字色洗底，明暗双向自适应）、侧栏一级树行常态透明/悬停洗底、会话/详情页壁纸降噪（chat 页 50% 纱罩、配色主题不输出降噪规则）、详情面板透化（内部组件/Monaco 各背景层透明、md 代码块与表格 40% 浮层、配色主题不回归）
+- `test/skin-css.test.mjs` — 皮肤 CSS 生成：首页主标题 accent→secondary 渐变文字与 4 向 0 模糊 drop-shadow 实心轮廓（轮廓色 `--wb-halo` 随渐变中点 oklch 亮度自适应黑/白，清掉原生 text-shadow 防重影）、`copy.tagline` 渐变标语（未配置时不注入文案）、左上角字标硬切渐变双色且全 `var()` 引用（自定义取色自动适配，不硬编码色值）、已发出对话气泡透化（`.cr-theme` 作用域 `--cr-user-bubble-bg` 16% 文字色洗底，明暗双向自适应）、侧栏一级树行常态透明/悬停洗底、会话/详情页壁纸降噪（chat 页 50% 纱罩、配色主题不输出降噪规则）、详情面板透化（内部组件/Monaco 各背景层透明、md 代码块与表格 40% 浮层、配色主题不回归）、`buildMascotCss` 成长伙伴换图（`content: url()` 整体替换 + `object-fit: contain` 入框 + 隐藏原生悬停 video，未配置返回空串、拒绝外部 URL）
 - `test/theme-store.test.mjs` — 主题列表：多目录同 id 去重（内置优先）、缺 `name` 不再崩、跳过坏清单与 `.tmp-` 残留目录；`create` 名称校验
 - `test/bundled-themes.test.mjs` — 内置主题集成护栏：`themes/` 下每个目录都通过 `loadTheme` 完整校验、主题 id 与目录名一致且不重复、随主题的 `js` 文本可被 JS 引擎编译
 - `test/sky-clock.test.mjs` — Sky Clock 引擎（最小 DOM 桩跑真实 skin.js）：激活即写入 `--sky-*` 变量与重建的场景 SVG data URL（山脊沿用 aurora 轮廓）、明暗与 `--sky-scheme` 一致且类名/属性与菜单 `writeMode` 同构、teardown 清定时器/监听/全部内联变量且幂等
@@ -351,6 +352,8 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 | `midnight` | Midnight · 子夜 | 蓝 · 深色 · CSS 风景主题 |
 | `paper` | Paper · 纸韵 | 橙 × 墨黑 · 深色 · CSS 风景主题 |
 | `sakura` | Sakura · 樱吹雪 | 粉 · 深色 · CSS 风景主题 |
+
+其中 39 款主题另配有 `mascot.webp`「成长伙伴」替换形象（见各主题 `theme.json` 的 `mascot` 字段；CSS 配色/风景/定制主题与 `misty-fir-rain`、`ink-samurai`、`teal-waves`、`blue-waves`、`preset-aurora`、`mice-cat` 未配置）。
 
 ## ⚖️ 设计边界
 
