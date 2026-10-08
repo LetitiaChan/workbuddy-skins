@@ -57,7 +57,14 @@ if (Test-CDP $Port) {
   # 用 Win32_Process.Create 启动：进程由 WMI 服务派生，不附着本控制台，
   # 关闭本 PowerShell 窗口不会连带退出 WorkBuddy（Start-Process 会附着控制台，
   # 关窗时 conhost 向附着进程发送 CTRL_CLOSE_EVENT 导致 WorkBuddy 被终止）
-  $cmdLine = '"{0}" --remote-debugging-port={1}' -f $exe, $Port
+  # Chrome 136+ (Electron 37+) 仅在命令行显式给出非默认 --user-data-dir 时才启用远程调试；
+  # WorkBuddy 在代码里 setPath 设置数据目录，必须补同路径开关，否则 CDP 端口永远不监听
+  $userDataDir = Find-WorkBuddyUserDataDir
+  if (-not $userDataDir) {
+    Write-Error "未找到 WorkBuddy 用户数据目录（默认 `$env:USERPROFILE\.workbuddy\app）。可设置 `$env:WORKBUDDY_USER_DATA_DIR 指定"
+    exit 1
+  }
+  $cmdLine = '"{0}" --remote-debugging-port={1} --user-data-dir="{2}"' -f $exe, $Port, $userDataDir
   $spawn = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $cmdLine }
   if ($spawn.ReturnValue -ne 0) { Write-Error "启动 WorkBuddy 失败（ReturnValue=$($spawn.ReturnValue)）"; exit 1 }
   $deadline = (Get-Date).AddSeconds(30)

@@ -38,6 +38,17 @@ function Find-WorkBuddyExe {
   return $null
 }
 
+function Find-WorkBuddyUserDataDir {
+  # Chrome 136+ (Electron 37+) only honors --remote-debugging-port when a
+  # non-default --user-data-dir switch is present on the command line.
+  # WorkBuddy sets its data dir via app.setPath() in code, so the launcher
+  # must pass the same dir explicitly for CDP to come up.
+  if ($env:WORKBUDDY_USER_DATA_DIR -and (Test-Path -LiteralPath $env:WORKBUDDY_USER_DATA_DIR)) { return $env:WORKBUDDY_USER_DATA_DIR }
+  $p = Join-Path $env:USERPROFILE '.workbuddy\app'
+  if (Test-Path -LiteralPath $p) { return $p }
+  return $null
+}
+
 function Find-Node {
   $g = Get-Command node -ErrorAction SilentlyContinue
   if ($g) { return $g.Source }
