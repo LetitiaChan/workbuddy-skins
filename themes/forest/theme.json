@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "forest",
-  "name": "Forest",
+  "name": "Forest · 幽林",
   "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "group": "scenery",
@@ -11,5 +11,8 @@
     "secondary": "#46533D",
     "surface": "#1D302B",
     "text": "#EDF6EC"
+  },
+  "copy": {
+    "tagline": "幽林静谧，呼吸自然"
   }
 }

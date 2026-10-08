@@ -1,9 +1,11 @@
 /*
- * magical-night 装饰层：主内容区视觉签名（配色移植自 workbuddy-skin-skill，
+ * magical-night 装饰层：主内容区视觉签名 + 侧边栏主题晕染（配色移植自 workbuddy-skin-skill，
  * MIT，作者 zhangxiaoqiang1991）。
  * 换色基座（--cb-* 变量覆盖 + 实底表面）由注入器按 theme.json colors 生成并前置
- * 拼接（buildPaletteCss）；本文件只保留每套主题的签名渐变，选择器适配当前版本
+ * 拼接（buildPaletteCss）；本文件保留每套主题的签名渐变与侧边栏晕染，选择器适配当前版本
  * 主内容锚点（.teams-main-content / .wb-home-route / [data-view-id=main-content]）。
+ * 2026-10-07 增强：用户反馈配色主题效果不明显——渐变不透明度/半径整体上调，
+ * 新增侧边栏 accent 晕染（与基座同优先级同 !important，靠后书写胜出）。
  */
 
 .teams-main-content,
@@ -13,8 +15,15 @@
 [data-view-id=main-content] {
   background-color: var(--wb-surface) !important;
   background-image:
-    radial-gradient(circle at 15% 18%, rgba(251, 211, 109, 0.12) 0 2px, transparent 3px),
-    radial-gradient(circle at 83% 22%, rgba(192, 132, 252, 0.29), transparent 32%),
-    radial-gradient(circle at 40% 82%, rgba(94, 234, 212, 0.1), transparent 34%),
+    radial-gradient(circle at 15% 18%, rgba(251, 211, 109, 0.22) 0 2px, transparent 3px),
+    radial-gradient(circle at 83% 22%, rgba(192, 132, 252, 0.44), transparent 40%),
+    radial-gradient(circle at 40% 82%, rgba(94, 234, 212, 0.2), transparent 42%),
     linear-gradient(145deg, #100b2b, #211248) !important;
+}
+
+/* 侧边栏主题晕染：顶部 accent 色光 + 基座同款 surface/text 浮层 */
+[data-view-id=sidebar] {
+  background:
+    linear-gradient(180deg, rgba(192, 132, 252, 0.16), transparent 42%),
+    color-mix(in srgb, var(--wb-surface) 92%, var(--wb-text) 5%) !important;
 }

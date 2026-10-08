@@ -3,12 +3,16 @@
   "id": "cyber-lobster",
   "name": "Cyber Lobster · 赛博龙虾",
   "css": "skin.css",
-  "order": -28,
+  "thumbnail": "thumbnail.webp",
+  "order": -29,
   "group": "palette",
   "colors": {
     "accent": "#FF6B5F",
     "secondary": "#2DD4BF",
     "surface": "#07111F",
     "text": "#EEFCFF"
+  },
+  "copy": {
+    "tagline": "赛博甲壳，硬核出击"
   }
 }

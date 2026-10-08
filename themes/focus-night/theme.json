@@ -3,6 +3,7 @@
   "id": "focus-night",
   "name": "Focus Night · 专注夜色",
   "css": "skin.css",
+  "thumbnail": "thumbnail.webp",
   "order": -30,
   "group": "palette",
   "colors": {
@@ -10,5 +11,8 @@
     "secondary": "#2563EB",
     "surface": "#090D13",
     "text": "#EDF4FF"
+  },
+  "copy": {
+    "tagline": "夜色专注，心无旁骛"
   }
 }

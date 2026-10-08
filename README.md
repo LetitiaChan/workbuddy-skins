@@ -59,7 +59,7 @@
 - **一张图片就是一个主题**：任意 PNG、JPG、JPEG、WebP 直接生成皮肤（配色 + 背景底图）
 - **动图背景**：GIF、动态 WebP、动态 AVIF 原样注入、保留动画播放（跳过 canvas 重编码，仍用第一帧取色）；动图限 3MB、最长边 1920px（体积为适配 localStorage 配额，分辨率为避免拖慢渲染）
 - **视频背景**：MP4（H.264）抽帧取色，海报帧作 CSS 底图兜底，视频以固定背景层循环静音播放；原始视频存 IndexedDB（不占 localStorage 配额），限 30MB
-- **42 个内置预设**：Miku、原神 ×2、鸣潮 ×2、火影忍者 ×2、恋与深空 ×2、猫鼠、海滩夜晚、长河落日圆、小可爱、冷杉雨（MP4 视频）、月夜、温泉雪（MP4 视频）、极光之夜、静谧星空、液态玻璃 ×2、梵高 · 星月夜、莫奈 ×2（日出印象 / 睡莲）、高达、日落山脊、瑞克和莫蒂、吉卜力（龙猫）、星际穿越、月球，外加三款整页 CSS 定制主题「QQ 2008 / 腾讯云 TDP（浅色 · 深色）」，以及 10 套无图纯配色主题（专注夜色 / 暖纸墨色 / 赛博龙虾 / 舞台极光 / 玫瑰红毯 / 银白偶像 / 樱粉梦境 / 机械核心 / 魔法星夜 / 像素校园，移植自 workbuddy-skin-skill）
+- **65 个内置预设**：Miku、原神 ×2、鸣潮 ×2、火影忍者 ×2、恋与深空 ×2、EVA 初号机、黑神话 · 悟空、猫鼠 · 夜巡、小可爱、冷杉雨（MP4 视频）、月夜、温泉雪（MP4 视频）、水墨武士（MP4 视频）、极光之夜、静谧星空、液态玻璃 ×2、梵高 · 星月夜、高达、瑞克和莫蒂、日落山脊、星际穿越、月球、吉卜力（龙猫）、财神 · 清爽、龙珠 ×2（筋斗云 / 超级赛亚人），以及地球之夜、山间小径、林间灯笼、复古机车、竹林深处、海上日落、青绿流体、深海水母、海岸回廊、墨青波浪、灯塔黄昏、仙女座星系、世界地图、青山明月、蓝色波浪等 15 款风景摄影 / 矢量主题；外加三款整页 CSS 定制主题「QQ 2008 / 腾讯云 TDP（浅色 · 深色）」、6 款场景插画 CSS 风景主题（Aurora · 山野极光 / Dream · 云端梦境 / Forest · 幽林 / Midnight · 子夜 / Paper · 纸韵 / Sakura · 樱吹雪），以及 10 套无图纯配色主题（专注夜色 / 暖纸墨色 / 赛博龙虾 / 舞台极光 / 玫瑰红毯 / 银白偶像 / 樱粉梦境 / 机械核心 / 魔法星夜 / 像素校园，移植自 workbuddy-skin-skill）
 - **深浅色自动适配**：根据主题配色的 surface 明度自动切换 WorkBuddy 的 `data-vscode-theme-kind`，让 VS Code 原生控件（输入框、按钮等）跟着深浅色变
 - **会话页壁纸降噪**：新建任务页壁纸全量透出；进入会话/详情页时菜单脚本自动打 `body[data-wb-skin-page="chat"]` 标记（机制同 TDP 主题的 `data-tdp-page`），图片主题在 `#root` 叠 50% 表面色纱罩、视频主题的视频层压到 35% 不透明度，壁纸仍清晰可辨而对话文字可读；回到首页自动恢复
 - **视频重影防护**：chat 页视频挂载成功时打 `data-wb-skin-video="on"` 标记，`#root` 撤掉海报帧底图只留纱罩盖表面色，避免半透明视频与静态海报帧错位叠出重影；视频缺失时海报兜底照常
@@ -224,9 +224,10 @@ node src/cli.mjs apply --theme my-skin
 
 - CSS 中的 `url("./asset")` 相对引用（PNG/SVG/WebP 等图片）在注入时内联为 data URL，资源必须位于主题目录内；`data:`/绝对 URL 原样保留
 - `colors.accent`/`colors.surface` 仍必填语义不变：菜单圆点色、明暗模式钉住（CSS 内的 `body.dark` 作用域据此激活）
-- `order` 控制菜单排序（数值小者在前）；CSS 主题在菜单中按可选 `group` 字段分组：`"custom"`（默认，「定制主题」，整页风格移植如 QQ 2008 / TDP）或 `"palette"`（「配色主题」，无图纯配色移植如内置 10 套 workbuddy-skin-skill 配色）；图片/视频主题归入「图片主题」分组，不携带 `group` 字段
+- `order` 控制菜单排序（数值小者在前）；CSS 主题在菜单中按可选 `group` 字段分组：`"custom"`（默认，「定制主题」，整页风格移植如 QQ 2008 / TDP）、`"palette"`（「配色主题」，无图纯配色移植如内置 10 套 workbuddy-skin-skill 配色）或 `"scenery"`（「风景主题」，场景插画移植如内置 Aurora / Dream / Forest / Midnight / Paper / Sakura 六款）；图片/视频主题归入「图片主题」分组，不携带 `group` 字段
 - `"palette"` 主题的 `skin.css` 只是**装饰层**（主内容区签名渐变）：注入时由 `buildPaletteCss` 按 `colors` 四色生成换色基座（与图片主题同源的 `--cb-*` 变量覆盖 + 实底表面 + 组件点缀）前置拼接，装饰层叠在最后。这样移植来的配色走当前版本的设计变量系统全组件生效，不依赖移植源的旧版 DOM 类名
 - 可选 `thumbnail` 字段：「选择主题」弹窗卡片封面图（主题目录内的 PNG/JPEG/WebP/GIF/AVIF，≤512KB，建议 640×400 WebP）。纯 CSS 主题没有 hero，未配置时显示 accent→secondary 渐变色块；图片/视频主题也可配置，覆盖从 hero/poster 自动提取的封面。内置 QQ 2008 / TDP 两款的 `thumbnail.webp` 由吉祥物素材叠加主题渐变合成
+- 可选 `mascot` 字段：首页/会话页输入框上方「成长伙伴」机器人的主题替换形象（主题目录内的 PNG/JPEG/WebP/GIF/AVIF，≤256KB，建议 256×256 透明底 WebP；GIF/动态 WebP 保留动画）。任意类型主题均可配置；未配置的主题不输出替换规则，原生机器人原样保留。实现为纯 CSS（Chromium `img { content: url() }` 整体换图 + `object-fit: contain` 入框 + 隐藏原生悬停动图 video），作用于 `wb-home-route__growth-buddy` / `conversation-input__growth-buddy` 两个槽位，随主题切换自动生效/还原
 - 可选 `js` 字段（如 `"js": "skin.js"`）携带伴随脚本：主题激活时作为函数体执行（`new Function`），返回值若是函数则作为拆除回调，在切换主题/恢复原生/暂停注入时调用；js 内的 `"./asset"` 相对资源引用（图片/音频/视频）同样内联为 data URL。用于 CSS 做不到的 DOM 注入与交互行为——TDP 主题主界面的宇航员动效层、QQ 2008 的音效（消息/失败/敲门，复用旧项目的 `WORKBUDDY_THEME_SOUND_ENABLED`/`VOLUME` 设置键，1200ms 节流）与企鹅挂件均由此实现。页面 CSP 禁 eval 时降级为警告，CSS 皮肤本体不受影响
 
 ## ⌨️ 命令行
@@ -270,7 +271,7 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 - `test/theme-schema.test.mjs` — 主题清单校验：`poster` 规则（视频 hero 必填、图片 hero 禁填、必须是主题目录内的图片相对路径）、纯 CSS 主题规则（`css` 字段替代 `hero`、无 hero 时禁带 poster）与 `loadTheme` 的 realpath 逃逸防护（junction / symlink）、目录内合法符号链接、清单 JSON 报错带路径
 - `test/injector.test.mjs` — 视频预置链路：4MB 分块切分与暂存清理、写入字节数校验、`Uint8Array.fromBase64` 快路径 + `atob` 回退 + 主线程让出、按尺寸判重跳过、单个渲染进程失败降级为警告、本地文件缺失降级；CSS 主题资源内联（`url(./asset)` → data URL、逃逸目录/不支持类型拒绝、绝对 URL 保留）；`applySkin` 每个渲染进程只开一条会话（视频预置失败时换新连接继续注入）；`removeSkin` 先调菜单 teardown
 - `test/skin-menu.test.mjs` — 🎨 菜单注入脚本：生成脚本可被 JS 引擎编译、切换 / 上传 / 恢复原生各路径的异常兜底与错误日志、大图解码快路径、IndexedDB 阻塞与中止处理、重复注入 / 暂停时的 teardown（断观察者、解除明暗钉住、移除全局监听）、布局校准按 rAF 合帧、自定义主题列表缓存、自愈重挂（菜单/样式/定位按钮被框架移除后自动重挂，teardown 先断观察者再移除）、右侧定位按钮（四键齐全、容器/锚点启发式与兜底、平滑滚动、滚轮取消动画、显隐合帧、teardown 拆除）、会话/详情页标记（home/chat 探测与路由切换自动更新、teardown 清除）、视频层降噪（chat 页 35% 不透明度）与重影防护（视频挂载标记同步维护、chat+在挂时撤海报帧）
-- `test/skin-css.test.mjs` — 皮肤 CSS 生成：首页主标题 accent→secondary 渐变文字与 `drop-shadow` 光晕（不用会透过字形的 `text-shadow`）、`copy.tagline` 渐变标语（未配置时不注入文案）、左上角字标硬切渐变双色且全 `var()` 引用（自定义取色自动适配，不硬编码色值）、会话/详情页壁纸降噪（chat 页 50% 纱罩、配色主题不输出降噪规则）、详情面板透化（内部组件/Monaco 各背景层透明、md 代码块与表格 40% 浮层、配色主题不回归）
+- `test/skin-css.test.mjs` — 皮肤 CSS 生成：首页主标题 accent→secondary 渐变文字与表面色描边（`-webkit-text-stroke` + `paint-order: stroke fill`，替代会透过字形的 `text-shadow` 和繁忙壁纸上易糊的 `drop-shadow` 光晕）、`copy.tagline` 渐变标语（未配置时不注入文案）、左上角字标硬切渐变双色且全 `var()` 引用（自定义取色自动适配，不硬编码色值）、会话/详情页壁纸降噪（chat 页 50% 纱罩、配色主题不输出降噪规则）、详情面板透化（内部组件/Monaco 各背景层透明、md 代码块与表格 40% 浮层、配色主题不回归）
 - `test/theme-store.test.mjs` — 主题列表：多目录同 id 去重（内置优先）、缺 `name` 不再崩、跳过坏清单与 `.tmp-` 残留目录；`create` 名称校验
 - `test/bundled-themes.test.mjs` — 内置主题集成护栏：`themes/` 下每个目录都通过 `loadTheme` 完整校验、主题 id 与目录名一致且不重复、随主题的 `js` 文本可被 JS 引擎编译
 - `test/cdp-client.test.mjs` — CDP 会话：默认不 enable 任何域、`enableDomains` 显式开启与参数校验
@@ -294,8 +295,6 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 | `wuthering-tide` | 鸣潮 · 声骸 | 青 · 深色 |
 | `wukong` | 黑神话 · 悟空 | 鎏金 × 朱砂 · 深色 |
 | `mice-cat` | 猫鼠 · 夜巡 | 金 · 深色 |
-| `beach-night` | 海滩夜晚 | 深蓝 · 深色 |
-| `sunset` | 长河落日圆 | 落日橘 · 深色 |
 | `cutie` | 小可爱 | 米白 · 浅色 |
 | `misty-fir-rain` | 下雨-冷杉 | 墨绿 · 深色 · MP4 视频 |
 | `moonlit-night` | 月夜 | 深蓝 · 深色 |
@@ -305,14 +304,31 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 | `preset-liquid-glass-light` | 液态玻璃 · 亮 | 淡紫 · 浅色 |
 | `preset-liquid-glass-dark` | 液态玻璃 · 暗 | 墨蓝 · 深色 |
 | `vangogh-starry` | 梵高 · 星月夜 | 蓝 · 深色 |
-| `monet-sunrise` | 莫奈 · 日出印象 | 青 × 灰 · 深色 |
-| `monet-waterlilies` | 莫奈 · 睡莲 | 绿 × 青 · 深色 |
 | `gundam` | 高达 · 钢铁之魂 | 红 × 橙 · 深色 |
 | `rick-morty` | 瑞克和莫蒂 | 绿 · 深色 |
 | `sunset-ridge` | 日落山脊 | 橙 · 深色 |
 | `interstellar` | 星际穿越 | 橙 × 深蓝 · 深色 |
 | `moon` | 月球 | 墨黑 × 灰 · 深色 |
 | `totoro` | 龙猫 · 树洞 | 青 × 绿 · 深色 |
+| `ink-samurai` | 水墨武士 | 深蓝 · 深色 · MP4 视频 |
+| `earth-night` | 地球之夜 | 深蓝 × 棕 · 深色 |
+| `mountain-path` | 山间小径 | 青 × 绿 · 深色 |
+| `forest-lantern` | 林间灯笼 | 棕 × 灰 · 深色 |
+| `motorcycle` | 复古机车 | 橙 × 青 · 深色 |
+| `bamboo` | 竹林深处 | 绿 × 灰 · 深色 |
+| `sea-sunset` | 海上日落 | 蓝 × 红 · 深色 |
+| `green-ink` | 青绿流体 | 绿 · 深色 |
+| `jellyfish` | 深海水母 | 蓝 · 深色 |
+| `coastal-arches` | 海岸回廊 | 棕 × 蓝 · 深色 |
+| `teal-waves` | 墨青波浪 | 青 × 红 · 深色 |
+| `lighthouse-dusk` | 灯塔黄昏 | 红 × 灰 · 浅色 |
+| `galaxy` | 仙女座星系 | 深蓝 × 橙 · 深色 |
+| `world-map` | 世界地图 | 蓝 × 绿 · 深色 |
+| `teal-mountains` | 青山明月 | 青 · 浅色 |
+| `blue-waves` | 蓝色波浪 | 青 · 浅色 |
+| `caishen-readable` | 财神 · 清爽 | 橙 · 浅色 |
+| `dragonball-nimbus` | 龙珠 · 筋斗云 | 青 × 金 · 深色 |
+| `dragonball-super-saiyan` | 龙珠 · 超级赛亚人 | 金 × 青 · 深色 |
 | `qq2008` | QQ 2008 | 蓝 · 浅色 · CSS 定制主题（主窗口企鹅大图背景，含音效与企鹅挂件） |
 | `tdp-pro` | 腾讯云 TDP | 靛紫 · 浅色 · CSS 定制主题（宇航员动效层） |
 | `tdp-pro-dark` | 腾讯云 TDP · 深色 | 靛紫 · 深色 · CSS 定制主题 |
@@ -326,6 +342,12 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 | `mecha-core` | Mecha Core · 机械核心 | 能量橙 × 机械灰 · 深色 · CSS 配色主题 |
 | `magical-night` | Magical Night · 魔法星夜 | 星紫 × 金 · 深色 · CSS 配色主题 |
 | `pixel-campus` | Pixel Campus · 像素校园 | 天空蓝 · 浅色 · CSS 配色主题 |
+| `aurora` | Aurora · 山野极光 | 青 × 深蓝 · 深色 · CSS 风景主题 |
+| `dream` | Dream · 云端梦境 | 蓝 × 紫 · 深色 · CSS 风景主题 |
+| `forest` | Forest · 幽林 | 绿 · 深色 · CSS 风景主题 |
+| `midnight` | Midnight · 子夜 | 蓝 · 深色 · CSS 风景主题 |
+| `paper` | Paper · 纸韵 | 橙 × 墨黑 · 深色 · CSS 风景主题 |
+| `sakura` | Sakura · 樱吹雪 | 粉 · 深色 · CSS 风景主题 |
 
 ## ⚖️ 设计边界
 
@@ -365,4 +387,4 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 
 ## 📜 许可与素材
 
-代码使用 [MIT License](LICENSE)。预览与预设中的角色、名称和视觉素材权利属于各自权利人（初音未来、原神、鸣潮、火影忍者、恋与深空、高达、吉卜力、瑞克和莫蒂、星际穿越等），仅用于主题概念展示，不由本项目的软件许可证授权。内置主题「梵高 · 星月夜」「莫奈 · 日出印象」「莫奈 · 睡莲」的素材为公有领域画作（梵高《星月夜》1889、莫奈《日出·印象》1872、莫奈《睡莲》系列，作者逝世均已逾 70 年）。
+代码使用 [MIT License](LICENSE)。预览与预设中的角色、名称和视觉素材权利属于各自权利人（初音未来、原神、鸣潮、火影忍者、恋与深空、高达、吉卜力、瑞克和莫蒂、星际穿越等），仅用于主题概念展示，不由本项目的软件许可证授权。内置主题「梵高 · 星月夜」的素材为公有领域画作（梵高《星月夜》1889，作者逝世已逾 70 年）。

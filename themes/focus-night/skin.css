@@ -1,9 +1,11 @@
 /*
- * focus-night 装饰层：主内容区视觉签名（配色移植自 workbuddy-skin-skill，
+ * focus-night 装饰层：主内容区视觉签名 + 侧边栏主题晕染（配色移植自 workbuddy-skin-skill，
  * MIT，作者 zhangxiaoqiang1991）。
  * 换色基座（--cb-* 变量覆盖 + 实底表面）由注入器按 theme.json colors 生成并前置
- * 拼接（buildPaletteCss）；本文件只保留每套主题的签名渐变，选择器适配当前版本
+ * 拼接（buildPaletteCss）；本文件保留每套主题的签名渐变与侧边栏晕染，选择器适配当前版本
  * 主内容锚点（.teams-main-content / .wb-home-route / [data-view-id=main-content]）。
+ * 2026-10-07 增强：用户反馈配色主题效果不明显——渐变不透明度/半径整体上调，
+ * 新增侧边栏 accent 晕染（与基座同优先级同 !important，靠后书写胜出）。
  */
 
 .teams-main-content,
@@ -13,6 +15,13 @@
 [data-view-id=main-content] {
   background-color: var(--wb-surface) !important;
   background-image:
-    radial-gradient(circle at 82% 12%, rgba(14, 116, 144, 0.19), transparent 32%),
-    radial-gradient(circle at 42% 88%, rgba(37, 99, 235, 0.13), transparent 36%) !important;
+    radial-gradient(circle at 82% 12%, rgba(103, 232, 249, 0.22), transparent 40%),
+    radial-gradient(circle at 42% 88%, rgba(37, 99, 235, 0.32), transparent 46%) !important;
+}
+
+/* 侧边栏主题晕染：顶部 accent 色光 + 基座同款 surface/text 浮层 */
+[data-view-id=sidebar] {
+  background:
+    linear-gradient(180deg, rgba(103, 232, 249, 0.16), transparent 42%),
+    color-mix(in srgb, var(--wb-surface) 92%, var(--wb-text) 5%) !important;
 }

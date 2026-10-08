@@ -3,12 +3,16 @@
   "id": "rose-glam",
   "name": "Rose Glam · 玫瑰红毯",
   "css": "skin.css",
-  "order": -26,
+  "thumbnail": "thumbnail.webp",
+  "order": -25,
   "group": "palette",
   "colors": {
     "accent": "#FF5C8A",
     "secondary": "#F7CB86",
     "surface": "#1B0710",
     "text": "#FFF7F7"
+  },
+  "copy": {
+    "tagline": "玫瑰红毯，魅力全开"
   }
 }

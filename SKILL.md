@@ -106,18 +106,27 @@ No official files are touched.
 ## Choosing a theme
 
 - List available themes: `node src/cli.mjs list` (macOS) / same via PowerShell.
-- Built-ins include `miku-light`, `genshin-dawn`, `genshin-night`,
+- Built-ins (65 total) include `miku-light`, `genshin-dawn`, `genshin-night`,
   `deepspace-dawn`, `deepspace-star`, `naruto-hokage`, `naruto-sasuke`,
-  `wuthering-echo`, `wuthering-tide`, `mice-cat`, `beach-night`, `sunset`,
+  `eva-unit01`, `wuthering-echo`, `wuthering-tide`, `wukong`, `mice-cat`,
   `cutie`, `misty-fir-rain`, `moonlit-night`, `snow-animals`, `preset-aurora`,
   `preset-starry`, `preset-liquid-glass-light`, `preset-liquid-glass-dark`,
-  plus three full-page CSS
-  themes: `qq2008` (QQ 2008), `tdp-pro` / `tdp-pro-dark` (Tencent Cloud TDP,
-  light / dark), plus ten pure-color CSS themes imported from
+  `vangogh-starry`, `gundam`,
+  `rick-morty`, `sunset-ridge`, `interstellar`, `moon`, `totoro`,
+  `ink-samurai`, `caishen-readable`, `dragonball-nimbus`,
+  `dragonball-super-saiyan`, plus 15 photography / vector themes
+  (`earth-night`, `mountain-path`, `forest-lantern`, `motorcycle`, `bamboo`,
+  `sea-sunset`, `green-ink`, `jellyfish`, `coastal-arches`, `teal-waves`,
+  `lighthouse-dusk`, `galaxy`, `world-map`, `teal-mountains`, `blue-waves`),
+  plus three full-page CSS themes: `qq2008` (QQ 2008),
+  `tdp-pro` / `tdp-pro-dark` (Tencent Cloud TDP, light / dark), six scenery
+  illustration CSS themes (`aurora`, `dream`, `forest`, `midnight`, `paper`,
+  `sakura`), plus ten pure-color CSS themes imported from
   workbuddy-skin-skill: `focus-night`, `warm-paper`, `cyber-lobster`,
   `stage-aurora`, `rose-glam`, `silver-idol`, `sakura-dream`, `mecha-core`,
   `magical-night`, `pixel-campus`. Full-page CSS themes appear under the
-  "定制主题" group in the 🎨 menu, pure-color CSS themes under "配色主题"
+  "定制主题" group in the 🎨 menu, scenery CSS themes under "风景主题"
+  (theme.json `group: "scenery"`), pure-color CSS themes under "配色主题"
   (theme.json `group: "palette"`), and image/video themes under "图片主题".
 - If the user names a mood/character (e.g. "dark Genshin"), map it to the
   closest id, or just apply the default and let them pick from the 🎨 menu.
@@ -218,11 +227,13 @@ renderer hint `renderer/index.html`. `npm test` should report all tests passing.
   with an optional theme id, execution-policy-proof (`-ExecutionPolicy Bypass`).
 - `scripts/apply.ps1` / `pause.ps1` / `find-workbuddy.ps1` — Windows launchers
   (shared `Find-WorkBuddyExe` / `Find-Node` live in `scripts/common.ps1`).
-- `themes/` — 33 built-in theme folders (`theme.json` + `hero.webp`; video themes use
+- `themes/` — 65 built-in theme folders (`theme.json` + `hero.webp`; video themes use
   `hero.mp4` + `poster` image, e.g. `misty-fir-rain`, `snow-animals`; CSS themes use a
   `css` field — optional `js` companion script, `order` sort key, and `group` field:
-  `"custom"` (default, full-page ports like `qq2008`, `tdp-pro`, `tdp-pro-dark`) or
-  `"palette"` (pure-color ports, the ten workbuddy-skin-skill themes). Any theme may
+  `"custom"` (default, full-page ports like `qq2008`, `tdp-pro`, `tdp-pro-dark`),
+  `"palette"` (pure-color ports, the ten workbuddy-skin-skill themes), or
+  `"scenery"` (scenery illustration ports: `aurora`, `dream`, `forest`,
+  `midnight`, `paper`, `sakura`). Any theme may
   set an optional `thumbnail` image (≤512KB, 640×400 WebP recommended) used as the
   theme-picker card cover; without it CSS themes show an accent→secondary gradient
   and image themes extract their hero/poster.

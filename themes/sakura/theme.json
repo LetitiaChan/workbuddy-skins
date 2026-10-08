@@ -1,15 +1,18 @@
 {
   "schemaVersion": 1,
   "id": "sakura",
-  "name": "Sakura",
+  "name": "Sakura · 樱吹雪",
   "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "group": "scenery",
-  "order": -5,
+  "order": -10,
   "colors": {
     "accent": "#E574AF",
     "secondary": "#5C3F58",
     "surface": "#31243F",
     "text": "#FFF1F7"
+  },
+  "copy": {
+    "tagline": "樱花纷飞，春意满怀"
   }
 }

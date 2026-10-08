@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "dream",
-  "name": "Dream",
+  "name": "Dream · 云端梦境",
   "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "group": "scenery",
@@ -11,5 +11,8 @@
     "secondary": "#17132A",
     "surface": "#11152B",
     "text": "#F4F2FF"
+  },
+  "copy": {
+    "tagline": "云端梦境，随心而行"
   }
 }

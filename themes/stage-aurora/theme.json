@@ -3,6 +3,7 @@
   "id": "stage-aurora",
   "name": "Stage Aurora · 舞台极光",
   "css": "skin.css",
+  "thumbnail": "thumbnail.webp",
   "order": -27,
   "group": "palette",
   "colors": {
@@ -10,5 +11,8 @@
     "secondary": "#4FF6D5",
     "surface": "#0C0820",
     "text": "#F7F4FF"
+  },
+  "copy": {
+    "tagline": "极光为幕，聚光登场"
   }
 }

@@ -1,15 +1,18 @@
 {
   "schemaVersion": 1,
   "id": "aurora",
-  "name": "Aurora",
+  "name": "Aurora · 山野极光",
   "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "group": "scenery",
-  "order": -10,
+  "order": -7,
   "colors": {
     "accent": "#15D4B4",
     "secondary": "#253B5B",
     "surface": "#10253A",
     "text": "#E6FFFA"
+  },
+  "copy": {
+    "tagline": "极光漫卷，山野生辉"
   }
 }

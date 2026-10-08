@@ -3,12 +3,16 @@
   "id": "magical-night",
   "name": "Magical Night · 魔法星夜",
   "css": "skin.css",
-  "order": -22,
+  "thumbnail": "thumbnail.webp",
+  "order": -26,
   "group": "palette",
   "colors": {
     "accent": "#C084FC",
     "secondary": "#FBD36D",
     "surface": "#100B2B",
     "text": "#FBF7FF"
+  },
+  "copy": {
+    "tagline": "魔法星夜，奇迹降临"
   }
 }

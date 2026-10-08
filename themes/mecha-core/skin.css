@@ -1,9 +1,11 @@
 /*
- * mecha-core 装饰层：主内容区视觉签名（配色移植自 workbuddy-skin-skill，
+ * mecha-core 装饰层：主内容区视觉签名 + 侧边栏主题晕染（配色移植自 workbuddy-skin-skill，
  * MIT，作者 zhangxiaoqiang1991）。
  * 换色基座（--cb-* 变量覆盖 + 实底表面）由注入器按 theme.json colors 生成并前置
- * 拼接（buildPaletteCss）；本文件只保留每套主题的签名渐变，选择器适配当前版本
+ * 拼接（buildPaletteCss）；本文件保留每套主题的签名渐变与侧边栏晕染，选择器适配当前版本
  * 主内容锚点（.teams-main-content / .wb-home-route / [data-view-id=main-content]）。
+ * 2026-10-07 增强：用户反馈配色主题效果不明显——网格线 0.05 几乎不可见，上调至 0.13；
+ * 橙色主光上调，补左下青色对位光；新增侧边栏 accent 晕染（靠后书写胜出基座纯色）。
  */
 
 .teams-main-content,
@@ -13,8 +15,16 @@
 [data-view-id=main-content] {
   background-color: var(--wb-surface) !important;
   background-image:
-    linear-gradient(rgba(61, 214, 208, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(61, 214, 208, 0.05) 1px, transparent 1px),
-    radial-gradient(circle at 82% 18%, rgba(255, 145, 52, 0.2), transparent 30%) !important;
-  background-size: 36px 36px, 36px 36px, auto !important;
+    linear-gradient(rgba(61, 214, 208, 0.13) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(61, 214, 208, 0.13) 1px, transparent 1px),
+    radial-gradient(circle at 82% 18%, rgba(255, 145, 52, 0.38), transparent 38%),
+    radial-gradient(circle at 30% 85%, rgba(61, 214, 208, 0.2), transparent 38%) !important;
+  background-size: 36px 36px, 36px 36px, auto, auto !important;
+}
+
+/* 侧边栏主题晕染：顶部 accent 色光 + 基座同款 surface/text 浮层 */
+[data-view-id=sidebar] {
+  background:
+    linear-gradient(180deg, rgba(255, 145, 52, 0.16), transparent 42%),
+    color-mix(in srgb, var(--wb-surface) 92%, var(--wb-text) 5%) !important;
 }

@@ -1,15 +1,18 @@
 {
   "schemaVersion": 1,
   "id": "midnight",
-  "name": "Midnight",
+  "name": "Midnight · 子夜",
   "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "group": "scenery",
-  "order": -7,
+  "order": -6,
   "colors": {
     "accent": "#9BB5DC",
     "secondary": "#1D314C",
     "surface": "#111827",
     "text": "#EDF3FF"
+  },
+  "copy": {
+    "tagline": "子夜深邃，灵感涌动"
   }
 }

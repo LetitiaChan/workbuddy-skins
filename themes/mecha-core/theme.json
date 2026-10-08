@@ -3,12 +3,16 @@
   "id": "mecha-core",
   "name": "Mecha Core · 机械核心",
   "css": "skin.css",
-  "order": -23,
+  "thumbnail": "thumbnail.webp",
+  "order": -28,
   "group": "palette",
   "colors": {
     "accent": "#FF9134",
     "secondary": "#3DD6D0",
     "surface": "#0A0E14",
     "text": "#EDF3F8"
+  },
+  "copy": {
+    "tagline": "核心点火，动力全开"
   }
 }

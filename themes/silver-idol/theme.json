@@ -3,12 +3,16 @@
   "id": "silver-idol",
   "name": "Silver Idol · 银白偶像",
   "css": "skin.css",
-  "order": -25,
+  "thumbnail": "thumbnail.webp",
+  "order": -22,
   "group": "palette",
   "colors": {
     "accent": "#8B7BE8",
     "secondary": "#6E7EA8",
     "surface": "#EEF0F7",
     "text": "#28283A"
+  },
+  "copy": {
+    "tagline": "银白舞台，闪耀登场"
   }
 }
