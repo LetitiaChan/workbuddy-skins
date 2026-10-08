@@ -127,7 +127,10 @@ No official files are touched.
   `tdp-pro` / `tdp-pro-dark` (Tencent Cloud TDP, light / dark), and
   `sky-clock` (Sky Clock · 四时天空 — a time-driven sky: a companion js
   rebuilds the scene SVG hourly, moving the sun/moon along an arc and shifting
-  sky/panel colors through real-sky keyframes; declares `dynamicMode` so the
+  sky/panel colors through real-sky keyframes; the moon follows the real
+  synodic month (waxing right-lit / waning left-lit), daytime ridges use
+  aerial-perspective greens, dawn/dusk add pink horizon mist, and midday
+  brings white clouds; declares `dynamicMode` so the
   menu does not pin light/dark and the js owns the mode writes), six scenery
   illustration CSS themes (`aurora`, `dream`, `forest`, `midnight`, `paper`,
   `sakura`), plus ten pure-color CSS themes imported from
