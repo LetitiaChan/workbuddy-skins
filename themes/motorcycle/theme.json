@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "motorcycle",
+  "name": "复古机车",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#6C594C",
+    "secondary": "#46615D",
+    "surface": "#19171A",
+    "text": "#E0DEE2"
+  },
+  "copy": {
+    "tagline": "引擎轰鸣，驰骋向前"
+  }
+}

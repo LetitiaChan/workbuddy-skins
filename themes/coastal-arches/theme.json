@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "coastal-arches",
+  "name": "海岸回廊",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#522D1A",
+    "secondary": "#40525F",
+    "surface": "#161113",
+    "text": "#DCD8DA"
+  },
+  "copy": {
+    "tagline": "海岸回廊，风蚀成诗"
+  }
+}

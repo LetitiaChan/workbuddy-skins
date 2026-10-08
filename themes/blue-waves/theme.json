@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "blue-waves",
+  "name": "蓝色波浪",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#1D5169",
+    "secondary": "#6C8E9E",
+    "surface": "#EAEEF3",
+    "text": "#122234"
+  },
+  "copy": {
+    "tagline": "碧波涌动，心随浪静"
+  }
+}

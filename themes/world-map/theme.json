@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "world-map",
+  "name": "世界地图",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#344982",
+    "secondary": "#829D77",
+    "surface": "#121522",
+    "text": "#D7DCEA"
+  },
+  "copy": {
+    "tagline": "世界在握，行者无疆"
+  }
+}

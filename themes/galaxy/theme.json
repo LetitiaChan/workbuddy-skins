@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "galaxy",
+  "name": "仙女座星系",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#36364F",
+    "secondary": "#755B4F",
+    "surface": "#12121B",
+    "text": "#D8D9E2"
+  },
+  "copy": {
+    "tagline": "银河璀璨，触手可及"
+  }
+}

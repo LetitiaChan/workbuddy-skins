@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "forest-lantern",
+  "name": "林间灯笼",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#402615",
+    "secondary": "#837267",
+    "surface": "#131012",
+    "text": "#D9D7D9"
+  },
+  "copy": {
+    "tagline": "林间灯火，照亮归途"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "lighthouse-dusk",
+  "name": "灯塔黄昏",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#B07C6F",
+    "secondary": "#564355",
+    "surface": "#F6F2F3",
+    "text": "#2D2A35"
+  },
+  "copy": {
+    "tagline": "灯塔暮色，守候归航"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "sea-sunset",
+  "name": "海上日落",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#566B87",
+    "secondary": "#CF9995",
+    "surface": "#161922",
+    "text": "#DCE1EA"
+  },
+  "copy": {
+    "tagline": "海上落日，余晖成诗"
+  }
+}

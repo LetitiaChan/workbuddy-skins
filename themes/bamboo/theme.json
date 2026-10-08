@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "bamboo",
+  "name": "竹林深处",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#686E47",
+    "secondary": "#526865",
+    "surface": "#191A19",
+    "text": "#DFE2E1"
+  },
+  "copy": {
+    "tagline": "竹影清风，悠然自得"
+  }
+}

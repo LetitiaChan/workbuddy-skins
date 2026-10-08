@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "teal-mountains",
+  "name": "青山明月",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#88C3C1",
+    "secondary": "#B2D8D7",
+    "surface": "#F3F7FA",
+    "text": "#263744"
+  },
+  "copy": {
+    "tagline": "青山如黛，明月相伴"
+  }
+}

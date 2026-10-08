@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "ink-samurai",
+  "name": "水墨武士",
+  "hero": "hero.mp4",
+  "poster": "hero.webp",
+  "colors": {
+    "accent": "#153D7C",
+    "secondary": "#6781AA",
+    "surface": "#0D1321",
+    "text": "#D3DAE9"
+  },
+  "copy": {
+    "tagline": "墨刃出鞘，一击入魂"
+  }
+}

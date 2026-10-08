@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "mountain-path",
+  "name": "山间小径",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#064055",
+    "secondary": "#4F7945",
+    "surface": "#0B131B",
+    "text": "#D0DBE3"
+  },
+  "copy": {
+    "tagline": "山径蜿蜒，步履不停"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "green-ink",
+  "name": "青绿流体",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#748429",
+    "secondary": "#243424",
+    "surface": "#1B1D15",
+    "text": "#E1E5DC"
+  },
+  "copy": {
+    "tagline": "青绿流转，落笔成画"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "earth-night",
+  "name": "地球之夜",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#222839",
+    "secondary": "#5C4A40",
+    "surface": "#0F1017",
+    "text": "#D5D7DF"
+  },
+  "copy": {
+    "tagline": "地球夜色，万家灯火"
+  }
+}

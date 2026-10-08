@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "teal-waves",
+  "name": "墨青波浪",
+  "hero": "hero.webp",
+  "colors": {
+    "accent": "#0D2629",
+    "secondary": "#974A3A",
+    "surface": "#0C1015",
+    "text": "#D1D7DC"
+  },
+  "copy": {
+    "tagline": "墨青翻涌，清新扑面"
+  }
+}
