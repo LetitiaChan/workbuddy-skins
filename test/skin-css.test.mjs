@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildMascotCss, buildPaletteCss, buildSkinCss } from "../src/skin-css.mjs";
+import { buildMascotCss, buildPaletteCss, buildSkinCss, buildTaglineCss } from "../src/skin-css.mjs";
 
 const HERO = "data:image/webp;base64,aGVsbG8=";
 const baseTheme = {
@@ -43,6 +43,18 @@ test("主题标语：copy.tagline 配置时输出渐变标语，未配置时不�
 
   const without = buildSkinCss({ theme: baseTheme, heroDataUrl: HERO });
   assert.ok(!without.includes(".wb-home-header::after"));
+});
+
+test("主题标语：buildTaglineCss 独立可渲染，无 --wb-* 变量时回退 colors 字面色值", () => {
+  const css = buildTaglineCss({ ...baseTheme, copy: { tagline: "极光漫卷" } });
+  assert.ok(css.includes(".wb-home-header::after"));
+  assert.ok(css.includes('content: "极光漫卷" !important'));
+  // 渐变与轮廓均带字面色值回退：风景/定制 CSS 主题不经 --wb-* 变量基座也能独立渲染
+  assert.ok(css.includes("var(--wb-accent, #5141F2)"));
+  assert.ok(css.includes("var(--wb-secondary, #7C3AED)"));
+  assert.ok(css.includes("var(--wb-halo, oklch(from color-mix(in oklch, #5141F2, #7C3AED)"));
+  // 未配置 tagline 返回空串
+  assert.equal(buildTaglineCss(baseTheme), "");
 });
 
 test("标题渐变引用 CSS 变量而非字面色值：自定义皮肤哨兵替换后自动适配取色", () => {

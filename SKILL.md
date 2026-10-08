@@ -106,7 +106,7 @@ No official files are touched.
 ## Choosing a theme
 
 - List available themes: `node src/cli.mjs list` (macOS) / same via PowerShell.
-- Built-ins (65 total) include `miku-light`, `genshin-dawn`, `genshin-night`,
+- Built-ins (64 total) include `miku-light`, `genshin-dawn`, `genshin-night`,
   `deepspace-dawn`, `deepspace-star`, `naruto-hokage`, `naruto-sasuke`,
   `eva-unit01`, `wuthering-echo`, `wuthering-tide`, `wukong`, `mice-cat`,
   `cutie`, `misty-fir-rain`, `moonlit-night`, `snow-animals`, `preset-aurora`,
@@ -114,9 +114,9 @@ No official files are touched.
   `vangogh-starry`, `gundam`,
   `rick-morty`, `sunset-ridge`, `interstellar`, `moon`, `totoro`,
   `ink-samurai`, `caishen-readable`, `dragonball-nimbus`,
-  `dragonball-super-saiyan`, plus 15 photography / vector themes
+  `dragonball-super-saiyan`, plus 14 photography / vector themes
   (`earth-night`, `mountain-path`, `forest-lantern`, `motorcycle`, `bamboo`,
-  `sea-sunset`, `green-ink`, `jellyfish`, `coastal-arches`, `teal-waves`,
+  `sea-sunset`, `green-ink`, `coastal-arches`, `teal-waves`,
   `lighthouse-dusk`, `galaxy`, `world-map`, `teal-mountains`, `blue-waves`),
   plus three full-page CSS themes: `qq2008` (QQ 2008),
   `tdp-pro` / `tdp-pro-dark` (Tencent Cloud TDP, light / dark), six scenery
@@ -227,7 +227,7 @@ renderer hint `renderer/index.html`. `npm test` should report all tests passing.
   with an optional theme id, execution-policy-proof (`-ExecutionPolicy Bypass`).
 - `scripts/apply.ps1` / `pause.ps1` / `find-workbuddy.ps1` — Windows launchers
   (shared `Find-WorkBuddyExe` / `Find-Node` live in `scripts/common.ps1`).
-- `themes/` — 65 built-in theme folders (`theme.json` + `hero.webp`; video themes use
+- `themes/` — 64 built-in theme folders (`theme.json` + `hero.webp`; video themes use
   `hero.mp4` + `poster` image, e.g. `misty-fir-rain`, `snow-animals`; CSS themes use a
   `css` field — optional `js` companion script, `order` sort key, and `group` field:
   `"custom"` (default, full-page ports like `qq2008`, `tdp-pro`, `tdp-pro-dark`),

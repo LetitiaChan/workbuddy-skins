@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "cutie",
   "name": "小可爱",
+  "order": 19,
   "hero": "hero.webp",
   "colors": {
     "accent": "#d8caab",

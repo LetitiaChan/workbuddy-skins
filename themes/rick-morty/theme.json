@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "rick-morty",
   "name": "瑞克和莫蒂",
+  "order": 17,
   "hero": "hero.webp",
   "colors": {
     "accent": "#41822C",

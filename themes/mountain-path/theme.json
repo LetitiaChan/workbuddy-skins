@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "mountain-path",
   "name": "山间小径",
+  "order": 22,
   "hero": "hero.webp",
   "colors": {
     "accent": "#064055",

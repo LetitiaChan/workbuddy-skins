@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "coastal-arches",
   "name": "海岸回廊",
+  "order": 27,
   "hero": "hero.webp",
   "colors": {
     "accent": "#522D1A",

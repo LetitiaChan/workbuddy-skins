@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "motorcycle",
   "name": "复古机车",
+  "order": 26,
   "hero": "hero.webp",
   "colors": {
     "accent": "#6C594C",

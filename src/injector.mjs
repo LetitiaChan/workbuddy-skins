@@ -3,7 +3,7 @@ import { extname, isAbsolute, relative, resolve, sep, win32 } from "node:path";
 
 import { CdpSession, fetchRendererTargets, waitForRendererTargets } from "./cdp-client.mjs";
 import { BASE64_DECODE_SNIPPET, IDB_OPEN_SNIPPET, VIDEO_DB_LITERALS } from "./renderer-snippets.mjs";
-import { buildMascotCss, buildPaletteCss, buildSkinCss } from "./skin-css.mjs";
+import { buildMascotCss, buildPaletteCss, buildSkinCss, buildTaglineCss } from "./skin-css.mjs";
 import { buildSkinMenuScript, CSS_SENTINELS, TEARDOWN_GLOBAL, VIDEO_LAYER_CSS } from "./skin-menu.mjs";
 import { probeAnimatedSize } from "./theme-store.mjs";
 
@@ -153,9 +153,16 @@ async function themeEntryBody(loadedTheme) {
   // 基座走当前版本的变量系统才能保证全组件一致取色
   if (loadedTheme.cssPath) {
     const rawCss = await inlineCssAssets(await readFile(loadedTheme.cssPath, "utf8"), loadedTheme.root, loadedTheme.manifest.id);
-    const css = loadedTheme.manifest.group === "palette"
+    let css = loadedTheme.manifest.group === "palette"
       ? buildPaletteCss({ theme: loadedTheme.manifest }) + "\n" + rawCss
       : rawCss;
+    // copy.tagline 标语：CSS 主题不经 buildSkinCss（标语只在其中内联渲染），此处统一追加
+    // 自包含标语块（var() 缺 --wb-* 时回退 colors 字面色值）。个别定制主题
+    // （tdp-pro / tdp-pro-dark）skin.css 已自带 .wb-home-header::after 硬编码标语
+    // （含 dark 渐变变体），跳过以避免覆盖其精心设计的文案
+    if (loadedTheme.manifest.copy?.tagline && !rawCss.includes(".wb-home-header::after")) {
+      css = css + "\n" + buildTaglineCss(loadedTheme.manifest);
+    }
     const js = loadedTheme.jsPath
       ? await inlineJsAssets(await readFile(loadedTheme.jsPath, "utf8"), loadedTheme.root, loadedTheme.manifest.id)
       : null;

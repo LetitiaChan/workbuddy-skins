@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "world-map",
   "name": "世界地图",
+  "order": 21,
   "hero": "hero.webp",
   "colors": {
     "accent": "#344982",

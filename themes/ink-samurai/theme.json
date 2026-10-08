@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "ink-samurai",
   "name": "水墨武士",
+  "order": 20,
   "hero": "hero.mp4",
   "poster": "hero.webp",
   "colors": {

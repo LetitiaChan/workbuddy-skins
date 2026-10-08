@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "teal-waves",
   "name": "墨青波浪",
+  "order": 33,
   "hero": "hero.webp",
   "colors": {
     "accent": "#0D2629",

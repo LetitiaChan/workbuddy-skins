@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "eva-unit01",
   "name": "EVA · 初号机",
+  "order": 15,
   "hero": "hero.webp",
   "colors": {
     "accent": "#FF6B08",

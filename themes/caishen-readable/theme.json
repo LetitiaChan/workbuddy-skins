@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "caishen-readable",
   "name": "财神 · 清爽",
+  "order": 41,
   "hero": "hero.webp",
   "appearance": "light",
   "previewFocus": { "x": 61, "y": 45 },

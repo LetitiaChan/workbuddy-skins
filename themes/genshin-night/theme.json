@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "genshin-night",
   "name": "原神 · 星夜",
+  "order": 7,
   "hero": "hero.webp",
   "colors": {
     "accent": "#e0b458",

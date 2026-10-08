@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "interstellar",
   "name": "星际穿越",
+  "order": 37,
   "hero": "hero.webp",
   "colors": {
     "accent": "#B38065",

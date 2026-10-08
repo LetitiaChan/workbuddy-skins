@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "galaxy",
   "name": "仙女座星系",
+  "order": 36,
   "hero": "hero.webp",
   "colors": {
     "accent": "#36364F",

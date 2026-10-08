@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "blue-waves",
   "name": "蓝色波浪",
+  "order": 45,
   "hero": "hero.webp",
   "colors": {
     "accent": "#1D5169",

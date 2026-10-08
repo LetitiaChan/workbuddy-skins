@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "totoro",
   "name": "龙猫 · 树洞",
+  "order": 18,
   "hero": "hero.webp",
   "colors": {
     "accent": "#1C4C3F",

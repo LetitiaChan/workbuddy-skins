@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "wuthering-echo",
   "name": "鸣潮 · 共鸣",
+  "order": 8,
   "hero": "hero.webp",
   "colors": {
     "accent": "#56e0d8",

@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "forest-lantern",
   "name": "林间灯笼",
+  "order": 28,
   "hero": "hero.webp",
   "colors": {
     "accent": "#402615",

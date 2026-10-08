@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "snow-animals",
   "name": "下雪-温泉",
+  "order": 25,
   "hero": "hero.mp4",
   "poster": "hero.webp",
   "colors": {

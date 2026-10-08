@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "naruto-sasuke",
   "name": "火影 · 佐助",
+  "order": 3,
   "hero": "hero.webp",
   "colors": {
     "accent": "#d8443c",

@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "sea-sunset",
   "name": "海上日落",
+  "order": 29,
   "hero": "hero.webp",
   "colors": {
     "accent": "#566B87",

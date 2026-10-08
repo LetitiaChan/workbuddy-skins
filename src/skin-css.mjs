@@ -22,10 +22,12 @@ function copy(value, fallback = "") {
 
 // 渐变标题轮廓/光晕色：随渐变中点（accent+secondary 各半）的 oklch 亮度自适应取黑/白——
 // 亮色渐变文字配黑轮廓、暗色渐变文字配白轮廓，与文字恒有反差。clamp 陡阶跃近似阈值
-// 分支（CSS 无条件语句），0.55 为感知亮度分界；全 var() 引用，自定义皮肤哨兵
-// 替换后在渲染进程按真实取色计算，明暗自适应对自定义主题同样生效
-const GRADIENT_TEXT_HALO =
-  "oklch(from color-mix(in oklch, var(--wb-accent), var(--wb-secondary)) clamp(0, calc((0.55 - l) * 1000 + 0.5), 1) 0 h)";
+// 分支（CSS 无条件语句），0.55 为感知亮度分界。accent/secondary 可传 var() 引用
+// （图片/配色主题，自定义皮肤哨兵替换后在渲染进程按真实取色计算）或字面色值
+// （风景/定制 CSS 主题无 --wb-* 变量，用 theme.json colors 内联计算）
+function gradientTextHalo(accent, secondary) {
+  return `oklch(from color-mix(in oklch, ${accent}, ${secondary}) clamp(0, calc((0.55 - l) * 1000 + 0.5), 1) 0 h)`;
+}
 
 // 贴纸式文字轮廓滤镜：4 个正方向 0 模糊 drop-shadow 叠出实心轮廓——链式复合时后层
 // 把前层剪影一起偏移，(±1,±1) 对角由两正方向级联自动补齐，轮廓半径恰为 size；
@@ -33,13 +35,13 @@ const GRADIENT_TEXT_HALO =
 // 末端叠一层低透明软晕托底。对透明渐变填充的文字，这是唯一既能勾出利落字边又不
 // 透字形发脏的方案——text-shadow 透字形显脏、-webkit-text-stroke 吃字形边缘、
 // 纯模糊光晕无明确边界，在繁忙壁纸上都与墙纸噪点糊成一片（六个主题实测均不清晰）
-function haloOutline(size, blur, opacity = 0.35) {
+function haloOutline(size, blur, opacity = 0.35, halo = "var(--wb-halo)") {
   const fmt = (v) => (v === 0 ? "0" : `${v}px`);
   const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const outline = dirs
-    .map(([x, y]) => `drop-shadow(${fmt(x * size)} ${fmt(y * size)} 0 var(--wb-halo))`)
+    .map(([x, y]) => `drop-shadow(${fmt(x * size)} ${fmt(y * size)} 0 ${halo})`)
     .join(" ");
-  return `${outline} drop-shadow(0 ${size + 1}px ${blur}px color-mix(in srgb, var(--wb-halo) ${Math.round(opacity * 100)}%, transparent))`;
+  return `${outline} drop-shadow(0 ${size + 1}px ${blur}px color-mix(in srgb, ${halo} ${Math.round(opacity * 100)}%, transparent))`;
 }
 
 // ---- 共享模板片段：图片主题（buildSkinCss）与配色主题（buildPaletteCss）同源，防漂移 ----
@@ -53,7 +55,7 @@ function buildVariableOverrides(colors) {
   --wb-surface: ${colors.surface};
   --wb-text: ${colors.text};
   /* 渐变标题轮廓色：随渐变中点亮度自适应黑/白，与文字恒为对立极 */
-  --wb-halo: ${GRADIENT_TEXT_HALO};
+  --wb-halo: ${gradientTextHalo("var(--wb-accent)", "var(--wb-secondary)")};
 
   /* 背景 */
   --cb-bg-primary: var(--wb-surface) !important;
@@ -296,6 +298,36 @@ export function buildMascotCss(mascotDataUrl) {
 `;
 }
 
+// 主题标语（copy.tagline）：首页主标题（.wb-home-header）下方的 accent→secondary 渐变标语。
+// 图片主题（buildSkinCss）与配色主题（经 buildPaletteCss 基座）已定义 --wb-accent 等变量，
+// 走 var() 引用（自定义皮肤哨兵替换后按真实取色计算）；风景/定制 CSS 主题不经基座、
+// 无 --wb-* 变量定义，此时 var() 回退到 theme.json colors 字面色值（gradientTextHalo 同理
+// 内联计算中点亮度黑/白轮廓），保证任意主题类型都能独立渲染标语。未配置 tagline 返回空串
+export function buildTaglineCss(theme) {
+  const tagline = theme.copy?.tagline;
+  if (!tagline) return "";
+  const accent = color(theme.colors?.accent, DEFAULT_COLORS.accent);
+  const secondary = color(theme.colors?.secondary, DEFAULT_COLORS.secondary);
+  const halo = `var(--wb-halo, ${gradientTextHalo(accent, secondary)})`;
+  return `
+/* 主题标语（copy.tagline）：有 --wb-* 变量定义时用变量值，无定义时回退 colors 字面色值 */
+.wb-home-header::after {
+  content: ${copy(tagline)} !important;
+  display: block !important;
+  width: fit-content;
+  margin: 10px auto 2px;
+  background: linear-gradient(90deg, var(--wb-accent, ${accent}), var(--wb-secondary, ${secondary}));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font: 600 15px/1.5 ui-rounded, system-ui;
+  letter-spacing: .3px;
+  text-shadow: none !important;
+  filter: ${haloOutline(1, 4, 0.35, halo)};
+}`;
+}
+
 export function buildSkinCss({ theme, heroDataUrl }) {
   if (!/^data:image\/(?:png|jpeg|webp|gif|avif);base64,[a-z0-9+/=]+$/i.test(heroDataUrl)) {
     throw new Error("hero 必须是本地 PNG、JPEG、WebP、GIF 或 AVIF 数据");
@@ -410,24 +442,7 @@ ${buildComponentAccents()}
   text-shadow: 0 0 8px var(--wb-surface), 0 2px 14px var(--wb-surface);
   pointer-events: none;
 }
-${theme.copy?.tagline ? `
-/* 主题标语（仅 copy.tagline 配置时输出，自定义皮肤 copy 为 null 不注入文案） */
-.wb-home-header::after {
-  content: ${copy(theme.copy.tagline)} !important;
-  display: block !important;
-  width: fit-content;
-  margin: 10px auto 2px;
-  background: linear-gradient(90deg, var(--wb-accent), var(--wb-secondary));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-  font: 600 15px/1.5 ui-rounded, system-ui;
-  letter-spacing: .3px;
-  text-shadow: none !important;
-  filter: ${haloOutline(1, 4)};
-}
-` : ""}`;
+${buildTaglineCss(theme)}`;
 }
 
 // 配色主题（group:"palette"，无图纯配色移植）：与图片主题共享 --cb-* 变量覆盖块与

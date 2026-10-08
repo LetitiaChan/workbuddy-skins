@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "sunset-ridge",
   "name": "日落山脊",
+  "order": 16,
   "hero": "hero.webp",
   "colors": {
     "accent": "#FCAF1A",

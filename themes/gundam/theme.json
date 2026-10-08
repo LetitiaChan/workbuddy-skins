@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "gundam",
   "name": "高达 · 钢铁之魂",
+  "order": 10,
   "hero": "hero.webp",
   "colors": {
     "accent": "#573A33",

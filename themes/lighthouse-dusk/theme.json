@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "lighthouse-dusk",
   "name": "灯塔黄昏",
+  "order": 30,
   "hero": "hero.webp",
   "colors": {
     "accent": "#B07C6F",

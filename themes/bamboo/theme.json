@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "bamboo",
   "name": "竹林深处",
+  "order": 23,
   "hero": "hero.webp",
   "colors": {
     "accent": "#686E47",

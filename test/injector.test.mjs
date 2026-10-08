@@ -339,6 +339,66 @@ test("applySkin：CSS 主题 manifest.group 为 palette 时前置拼接换色基
   });
 });
 
+test("applySkin：CSS 主题配置 copy.tagline 时追加自包含标语块（var 回退字面色值）", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(join(dir, "skin.css"), ".wb-home-route { background: red; }");
+    const cssTheme = {
+      manifest: {
+        id: "scenery",
+        name: "Scenery",
+        group: "scenery",
+        colors: { accent: "#15D4B4", secondary: "#253B5B" },
+        copy: { tagline: "极光漫卷" },
+      },
+      cssPath: join(dir, "skin.css"),
+      root: dir,
+      heroPath: null,
+      posterPath: null,
+    };
+    const { Session, sessions } = sessionFactory();
+    await applySkin({
+      loadedTheme: cssTheme,
+      themes: [cssTheme],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    const expression = sessions[0].lastCall();
+    assert.ok(expression.includes(".wb-home-header::after"), "应追加标语块");
+    // 菜单脚本 JSON 序列化后 css 内双引号转义为 \"
+    assert.ok(expression.includes('content: \\"极光漫卷\\"'), "标语文本应内联");
+    assert.ok(expression.includes("var(--wb-accent, #15D4B4)"), "无 --wb-* 变量时应回退 colors 字面色值");
+  });
+});
+
+test("applySkin：CSS 主题 skin.css 已自带 .wb-home-header::after 标语时跳过追加", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(join(dir, "skin.css"), '.wb-home-header::after { content: "与开发者共鸣 · 与云端共生"; }');
+    const cssTheme = {
+      manifest: {
+        id: "tdp-pro",
+        name: "TDP",
+        group: "custom",
+        colors: { accent: "#5141F2", secondary: "#7C3AED" },
+        copy: { tagline: "云端专业" },
+      },
+      cssPath: join(dir, "skin.css"),
+      root: dir,
+      heroPath: null,
+      posterPath: null,
+    };
+    const { Session, sessions } = sessionFactory();
+    await applySkin({
+      loadedTheme: cssTheme,
+      themes: [cssTheme],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    const expression = sessions[0].lastCall();
+    assert.ok(expression.includes("与开发者共鸣 · 与云端共生"), "应保留 skin.css 自带的硬编码标语");
+    assert.ok(!expression.includes("云端专业"), "已自带 ::after 标语的主题不应被 copy.tagline 覆盖");
+  });
+});
+
 test("applySkin：CSS 主题引用逃逸主题目录的资源时拒绝", async () => {
   await withTempDir(async (dir) => {
     await writeFile(join(dir, "skin.css"), 'a { background: url("./../outside.png"); }');

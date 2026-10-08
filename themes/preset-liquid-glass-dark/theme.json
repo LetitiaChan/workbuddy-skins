@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "preset-liquid-glass-dark",
   "name": "液态玻璃·暗",
+  "order": 35,
   "hero": "hero.webp",
   "colors": {
     "accent": "#7C8FE8",

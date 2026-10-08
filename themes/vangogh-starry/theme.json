@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "vangogh-starry",
   "name": "梵高 · 星月夜",
+  "order": 31,
   "hero": "hero.webp",
   "mascot": "mascot.webp",
   "colors": {

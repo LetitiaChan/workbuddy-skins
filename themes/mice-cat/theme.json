@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "mice-cat",
   "name": "猫鼠 · 夜巡",
+  "order": 14,
   "hero": "hero.webp",
   "colors": {
     "accent": "#E5B268",

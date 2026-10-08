@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "genshin-dawn",
   "name": "原神 · 晨曦",
+  "order": 6,
   "hero": "hero.webp",
   "colors": {
     "accent": "#5b7fd6",

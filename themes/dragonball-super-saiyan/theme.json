@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "dragonball-super-saiyan",
   "name": "龙珠 · 超级赛亚人",
+  "order": 11,
   "hero": "hero.webp",
   "appearance": "dark",
   "previewFocus": { "x": 67, "y": 3 },

@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "preset-starry",
   "name": "静谧星空",
+  "order": 39,
   "hero": "hero.webp",
   "colors": {
     "accent": "#8AA6F0",

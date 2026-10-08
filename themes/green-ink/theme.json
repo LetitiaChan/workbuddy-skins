@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "id": "green-ink",
   "name": "青绿流体",
+  "order": 32,
   "hero": "hero.webp",
   "colors": {
     "accent": "#748429",
