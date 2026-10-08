@@ -4,6 +4,7 @@
   "name": "原神 · 星夜",
   "order": 7,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#e0b458",
     "secondary": "#7a86d8",

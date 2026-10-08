@@ -194,6 +194,28 @@ test("js 伴随脚本：仅纯 CSS 主题可携带，路径必须是目录内 .j
   }
 });
 
+test("dynamicMode：缺省 false，必须布尔，且要求伴随 js 接管明暗写入", () => {
+  const cssTheme = { schemaVersion: 1, id: "css-theme", name: "CSS", css: "skin.css", js: "skin.js" };
+  // 缺省与显式 false 均归一为 false
+  assert.equal(validateThemeManifest(cssTheme).dynamicMode, false);
+  assert.equal(validateThemeManifest({ ...cssTheme, dynamicMode: false }).dynamicMode, false);
+  // css + js + dynamicMode:true 合法（如 sky-clock 按时间自写明暗）
+  assert.equal(validateThemeManifest({ ...cssTheme, dynamicMode: true }).dynamicMode, true);
+  // 没有 js 就没有人接管明暗写入，拒绝
+  assert.throws(
+    () => validateThemeManifest({ schemaVersion: 1, id: "css-theme", name: "CSS", css: "skin.css", dynamicMode: true }),
+    /requires a companion js/,
+  );
+  // 非布尔取值拒绝
+  for (const dynamicMode of ["true", 1, {}]) {
+    assert.throws(
+      () => validateThemeManifest({ ...cssTheme, dynamicMode }),
+      /must be a boolean/,
+      `dynamicMode=${JSON.stringify(dynamicMode)}`,
+    );
+  }
+});
+
 test("group 分组：仅纯 CSS 主题可配置，取值限 custom/palette/scenery，CSS 主题缺省归 custom", () => {
   const cssTheme = { schemaVersion: 1, id: "css-theme", name: "CSS", css: "skin.css" };
   // 缺省：CSS 主题归 custom（定制主题），图片主题无分组（注入侧固定归 image）

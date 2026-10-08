@@ -4,6 +4,7 @@
   "name": "复古机车",
   "order": 26,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#6C594C",
     "secondary": "#46615D",

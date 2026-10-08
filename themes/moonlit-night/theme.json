@@ -2,8 +2,9 @@
   "schemaVersion": 1,
   "id": "moonlit-night",
   "name": "月夜",
-  "order": 42,
+  "order": 36,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#0b2d73",
     "secondary": "#6076a4",

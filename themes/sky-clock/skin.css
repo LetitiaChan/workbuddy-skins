@@ -1,0 +1,44 @@
+/* Sky Clock · 四时天空 —— 天色随真实时间流转的定制主题。
+   骨架与取色哲学移植自内置 aurora（山野极光，JanCong/workbuddy-skin，MIT）：
+   body 渐变底 + body::before 挂载场景 SVG + 对话框磨砂浮层。
+   区别在于全部色彩都走 CSS 变量：skin.js 每小时按天空时刻表重建一次场景 SVG
+   （太阳/月亮弧线、山脊、星星）并改写本文件引用的变量；变量未写入时（CSP 禁 eval
+   导致 js 降级）回退到此处声明的黄昏静态默认值与 sky.svg 兜底图，主题依然可用。
+   artwork 层 z-index 2147482900，避让本地 🎨 菜单按钮（同层级 2147483000 区间） */
+body {
+  color-scheme: var(--sky-scheme, dark);
+  --sky-panel: rgba(38, 44, 88, 0.82);
+  --sky-border: rgba(255, 156, 92, 0.25);
+  --sky-shadow: rgba(75, 76, 146, 0.22);
+  background: linear-gradient(
+    160deg,
+    var(--sky-top, #4b4c92) 0%,
+    var(--sky-mid, #c96b80) 52%,
+    var(--sky-bot, #ff9c5c) 100%
+  ) !important;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147482900;
+  background-image: var(--sky-art, url("./sky.svg"));
+  background-position: center bottom;
+  background-repeat: no-repeat;
+  background-size: cover;
+  opacity: var(--sky-art-opacity, 0.3);
+  pointer-events: none;
+  transition: opacity 600ms ease;
+}
+
+body [role="dialog"] {
+  border-color: var(--sky-border) !important;
+  background-color: var(--sky-panel) !important;
+  box-shadow: 0 24px 80px var(--sky-shadow) !important;
+  backdrop-filter: blur(22px);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  body [role="dialog"] { backdrop-filter: none; }
+}

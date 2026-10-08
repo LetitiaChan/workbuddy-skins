@@ -154,6 +154,19 @@ function normalizeCopy(copy) {
   );
 }
 
+// dynamicMode：明暗模式不由菜单钉住，交给主题 js 按时间等外部条件动态改写
+// （如 sky-clock 的天空时刻配色）。必须伴随 js——没有 js 就没有人接管明暗写入
+function normalizeDynamicMode(dynamicMode, js) {
+  if (dynamicMode === undefined || dynamicMode === null) return false;
+  if (typeof dynamicMode !== "boolean") {
+    throw new Error("theme dynamicMode must be a boolean");
+  }
+  if (dynamicMode && (js === undefined || js === null)) {
+    throw new Error("theme dynamicMode requires a companion js to own the light/dark writes");
+  }
+  return dynamicMode;
+}
+
 export function validateThemeManifest(input) {
   if (!isRecord(input)) {
     throw new Error("theme manifest must be an object");
@@ -181,6 +194,7 @@ export function validateThemeManifest(input) {
     poster: hero === null ? null : normalizePoster(input.poster, hero),
     css,
     js: normalizeJs(input.js, css !== null),
+    dynamicMode: normalizeDynamicMode(input.dynamicMode, input.js),
     group: normalizeGroup(input.group, css !== null),
     thumbnail: normalizeThumbnail(input.thumbnail),
     mascot: normalizeMascot(input.mascot),

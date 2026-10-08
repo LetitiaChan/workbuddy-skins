@@ -2,8 +2,9 @@
   "schemaVersion": 1,
   "id": "earth-night",
   "name": "地球之夜",
-  "order": 38,
+  "order": 33,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#222839",
     "secondary": "#5C4A40",

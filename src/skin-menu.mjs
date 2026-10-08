@@ -43,6 +43,8 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       // scenery=风景主题（场景插画 CSS 移植）、image=图片/视频主题
       group: entry.group === "custom" || entry.group === "palette" || entry.group === "scenery" ? entry.group : "image",
       js: typeof entry.js === "string" && entry.js ? entry.js : null,
+      // dynamicMode：明暗模式交给主题伴随 js 动态写入（如按时间切换），菜单不钉住
+      dynamicMode: entry.dynamicMode === true,
       secondary: HEX_COLOR.test(entry.secondary ?? "") ? entry.secondary : null,
       // theme.json thumbnail 内联后的封面图；仅接受 data:image（防任意 URL 进 <img src>）
       thumb: typeof entry.thumb === "string" && /^data:image\/[a-z+]+;base64,/i.test(entry.thumb) ? entry.thumb : null,
@@ -462,7 +464,9 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       releaseHeroBlob();
       style.textContent = theme.css;
       document.documentElement.dataset.workbuddySkin = theme.id;
-      applyMode(theme.surface);
+      // dynamicMode 主题（如按时间变色的 sky-clock）跳过钉住——pinnedDark 保持 null，
+      // modeObserver 空转，明暗写入权完整交给主题 js；切回其他主题时恢复钉住
+      applyMode(theme.surface, { pin: !theme.dynamicMode });
       persistActive(theme.id);
       paint(theme.id);
       // 内置视频主题：海报帧 CSS 已就位，按主题 id 从 IndexedDB 取视频挂 <video> 固定层；

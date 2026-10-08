@@ -4,6 +4,7 @@
   "name": "龙珠 · 筋斗云",
   "order": 12,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "appearance": "dark",
   "previewFocus": { "x": 72, "y": 24 },
   "thumbnailFocus": { "x": 66, "y": 31 },

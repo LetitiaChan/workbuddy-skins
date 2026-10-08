@@ -4,6 +4,7 @@
   "name": "青山明月",
   "order": 44,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#88C3C1",
     "secondary": "#B2D8D7",

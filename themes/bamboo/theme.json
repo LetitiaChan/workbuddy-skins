@@ -2,8 +2,9 @@
   "schemaVersion": 1,
   "id": "bamboo",
   "name": "竹林深处",
-  "order": 23,
+  "order": 21,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#686E47",
     "secondary": "#526865",

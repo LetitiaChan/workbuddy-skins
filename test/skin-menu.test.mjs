@@ -310,6 +310,24 @@ test("伴随 JS：无 js 的条目归一为 null，不进入 payload", () => {
   assert.ok(script.includes('"js":null'));
 });
 
+test("dynamicMode 主题：明暗不钉住，写入权交给伴随 js", () => {
+  const entry = {
+    id: "sky-clock", name: "Sky Clock", css: "body{}", group: "custom",
+    js: "return () => {}", dynamicMode: true,
+  };
+  const script = buildSkinMenuScript({ entries: [entry], activeId: null, styleId: "s", menuId: "m" });
+  assert.doesNotThrow(() => new Function(script));
+  // 标志位进入 payload
+  assert.ok(script.includes('"dynamicMode":true'));
+  // setTheme 对 dynamicMode 主题跳过钉住（pinnedDark 保持 null，modeObserver 空转）
+  assert.ok(script.includes("applyMode(theme.surface, { pin: !theme.dynamicMode })"));
+  // 普通条目归一为 false，钉住行为不变
+  const plain = buildSkinMenuScript({
+    entries: [{ id: "plain", name: "Plain", css: "body{}" }], activeId: null, styleId: "s", menuId: "m",
+  });
+  assert.ok(plain.includes('"dynamicMode":false'));
+});
+
 test("原生主题组：拆分为浅色/深色两行，分别钉住明暗并持久化 native-light/native-dark", () => {
   const script = build();
   assert.doesNotThrow(() => new Function(script));

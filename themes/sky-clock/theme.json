@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "sky-clock",
+  "name": "Sky Clock · 四时天空",
+  "css": "skin.css",
+  "js": "skin.js",
+  "dynamicMode": true,
+  "group": "custom",
+  "order": -8,
+  "colors": {
+    "accent": "#4A90D9",
+    "secondary": "#FFB347",
+    "surface": "#16324F",
+    "text": "#EAF4FF"
+  },
+  "copy": {
+    "tagline": "日升日落，天色随心"
+  },
+  "thumbnail": "thumbnail.webp"
+}

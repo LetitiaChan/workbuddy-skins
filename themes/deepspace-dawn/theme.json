@@ -4,6 +4,7 @@
   "name": "恋与深空 · 晨曦",
   "order": 4,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#8f7fe8",
     "secondary": "#f097c8",

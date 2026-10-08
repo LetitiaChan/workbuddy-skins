@@ -4,6 +4,7 @@
   "name": "EVA · 初号机",
   "order": 15,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#FF6B08",
     "secondary": "#39FF14",

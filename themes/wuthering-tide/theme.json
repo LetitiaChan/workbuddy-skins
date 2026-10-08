@@ -4,6 +4,7 @@
   "name": "鸣潮 · 声骸",
   "order": 9,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#3fd6d0",
     "secondary": "#9aa8b0",

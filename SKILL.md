@@ -30,8 +30,11 @@ No official files are touched.
 - **WorkBuddy desktop installed** (this tool themes the desktop app, not web).
 - **Node.js 18+** on PATH (the injector is plain Node, cross-platform).
 - macOS **or** Windows. (Linux is not supported by WorkBuddy's desktop build.)
-- Warn the user once: applying **restarts WorkBuddy** and any unsaved in-app
-  work is lost. Ask them to save first.
+- Restart behavior: the Windows `apply.ps1` / `Start.bat` probe the CDP port
+  first and **skip the restart entirely when WorkBuddy is already in debug
+  mode** (port 9223 listening) — in-app work is unaffected in that case. The
+  macOS `apply.command` always restarts. Warn the user once: when a restart is
+  needed, unsaved in-app work is lost — ask them to save first.
 
 ## Platform detection (run first)
 
@@ -82,8 +85,10 @@ No official files are touched.
    `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, then retry.
 
    For manual use, the primary Windows entry is double-clicking `Start.bat` at the
-   repo root. It wraps `apply.ps1` (quit WorkBuddy → relaunch with CDP port 9223 →
-   inject skin), restores the last 🎨 menu choice when run without arguments, works
+   repo root. It wraps `apply.ps1` (probe CDP port 9223 → quit and relaunch
+   WorkBuddy in debug mode only if the port is not listening → inject skin;
+   an already-debug-mode WorkBuddy is left running and injected in place),
+   restores the last 🎨 menu choice when run without arguments, works
    regardless of the system execution policy (`-ExecutionPolicy Bypass` is built
    in), keeps the console window open with the error message on failure, and
    accepts an optional theme id: `Start.bat mice-cat`.
@@ -106,7 +111,7 @@ No official files are touched.
 ## Choosing a theme
 
 - List available themes: `node src/cli.mjs list` (macOS) / same via PowerShell.
-- Built-ins (64 total) include `miku-light`, `genshin-dawn`, `genshin-night`,
+- Built-ins (65 total) include `miku-light`, `genshin-dawn`, `genshin-night`,
   `deepspace-dawn`, `deepspace-star`, `naruto-hokage`, `naruto-sasuke`,
   `eva-unit01`, `wuthering-echo`, `wuthering-tide`, `wukong`, `mice-cat`,
   `cutie`, `misty-fir-rain`, `moonlit-night`, `snow-animals`, `preset-aurora`,
@@ -118,8 +123,12 @@ No official files are touched.
   (`earth-night`, `mountain-path`, `forest-lantern`, `motorcycle`, `bamboo`,
   `sea-sunset`, `green-ink`, `coastal-arches`, `teal-waves`,
   `lighthouse-dusk`, `galaxy`, `world-map`, `teal-mountains`, `blue-waves`),
-  plus three full-page CSS themes: `qq2008` (QQ 2008),
-  `tdp-pro` / `tdp-pro-dark` (Tencent Cloud TDP, light / dark), six scenery
+  plus four full-page CSS themes: `qq2008` (QQ 2008),
+  `tdp-pro` / `tdp-pro-dark` (Tencent Cloud TDP, light / dark), and
+  `sky-clock` (Sky Clock · 四时天空 — a time-driven sky: a companion js
+  rebuilds the scene SVG hourly, moving the sun/moon along an arc and shifting
+  sky/panel colors through real-sky keyframes; declares `dynamicMode` so the
+  menu does not pin light/dark and the js owns the mode writes), six scenery
   illustration CSS themes (`aurora`, `dream`, `forest`, `midnight`, `paper`,
   `sakura`), plus ten pure-color CSS themes imported from
   workbuddy-skin-skill: `focus-night`, `warm-paper`, `cyber-lobster`,
@@ -185,6 +194,10 @@ install is always left untouched.
   (`new Function`) for DOM injection (e.g. TDP's hero layer, QQ 2008's sounds and
   pet widget). Only apply themes from a repo the user trusts; the JS returns an
   optional teardown callback that runs on theme switch / native restore / pause.
+  A CSS+js theme may also declare `dynamicMode: true` (validated in the schema):
+  the menu then skips its light/dark pinning and the companion js owns the mode
+  writes (six mode classes + `data-vscode-theme-kind`/`name` + `colorScheme`,
+  same shape as the menu's own writer) — used by `sky-clock` to follow the sky.
 
 ## Checks (sanity before reporting done)
 
@@ -227,10 +240,11 @@ renderer hint `renderer/index.html`. `npm test` should report all tests passing.
   with an optional theme id, execution-policy-proof (`-ExecutionPolicy Bypass`).
 - `scripts/apply.ps1` / `pause.ps1` / `find-workbuddy.ps1` — Windows launchers
   (shared `Find-WorkBuddyExe` / `Find-Node` live in `scripts/common.ps1`).
-- `themes/` — 64 built-in theme folders (`theme.json` + `hero.webp`; video themes use
+- `themes/` — 65 built-in theme folders (`theme.json` + `hero.webp`; video themes use
   `hero.mp4` + `poster` image, e.g. `misty-fir-rain`, `snow-animals`; CSS themes use a
   `css` field — optional `js` companion script, `order` sort key, and `group` field:
-  `"custom"` (default, full-page ports like `qq2008`, `tdp-pro`, `tdp-pro-dark`),
+  `"custom"` (default, full-page ports like `qq2008`, `tdp-pro`, `tdp-pro-dark`,
+  `sky-clock`),
   `"palette"` (pure-color ports, the ten workbuddy-skin-skill themes), or
   `"scenery"` (scenery illustration ports: `aurora`, `dream`, `forest`,
   `midnight`, `paper`, `sakura`). Any theme may
@@ -247,6 +261,6 @@ renderer hint `renderer/index.html`. `npm test` should report all tests passing.
 
 ## One-line summary for the user
 
-> "I cloned workbuddy-skins, restarted WorkBuddy in debug mode, and injected
-> the theme. Use the 🎨 button (top-right) to switch or revert. Re-run apply if
-> you restart WorkBuddy manually."
+> "I cloned workbuddy-skins and injected the theme (WorkBuddy was restarted
+> into debug mode only if it wasn't already). Use the 🎨 button (top-right) to
+> switch or revert. Re-run apply if you restart WorkBuddy manually."

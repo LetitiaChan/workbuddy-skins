@@ -4,6 +4,7 @@
   "name": "原神 · 晨曦",
   "order": 6,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#5b7fd6",
     "secondary": "#e0aa3e",

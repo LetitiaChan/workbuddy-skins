@@ -4,6 +4,7 @@
   "name": "海上日落",
   "order": 29,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#566B87",
     "secondary": "#CF9995",

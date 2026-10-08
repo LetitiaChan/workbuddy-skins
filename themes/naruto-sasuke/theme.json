@@ -4,6 +4,7 @@
   "name": "火影 · 佐助",
   "order": 3,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#d8443c",
     "secondary": "#7fb3ff",

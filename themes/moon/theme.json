@@ -2,8 +2,9 @@
   "schemaVersion": 1,
   "id": "moon",
   "name": "月球",
-  "order": 43,
+  "order": 37,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#1C2029",
     "secondary": "#6B6E74",

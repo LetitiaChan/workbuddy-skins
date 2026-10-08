@@ -4,6 +4,7 @@
   "name": "山间小径",
   "order": 22,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#064055",
     "secondary": "#4F7945",

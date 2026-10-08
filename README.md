@@ -59,12 +59,13 @@
 - **一张图片就是一个主题**：任意 PNG、JPG、JPEG、WebP 直接生成皮肤（配色 + 背景底图）
 - **动图背景**：GIF、动态 WebP、动态 AVIF 原样注入、保留动画播放（跳过 canvas 重编码，仍用第一帧取色）；动图限 3MB、最长边 1920px（体积为适配 localStorage 配额，分辨率为避免拖慢渲染）
 - **视频背景**：MP4（H.264）抽帧取色，海报帧作 CSS 底图兜底，视频以固定背景层循环静音播放；原始视频存 IndexedDB（不占 localStorage 配额），限 30MB
-- **64 个内置预设**：Miku、原神 ×2、鸣潮 ×2、火影忍者 ×2、恋与深空 ×2、EVA 初号机、黑神话 · 悟空、猫鼠 · 夜巡、小可爱、冷杉雨（MP4 视频）、月夜、温泉雪（MP4 视频）、水墨武士（MP4 视频）、极光之夜、静谧星空、液态玻璃 ×2、梵高 · 星月夜、高达、瑞克和莫蒂、日落山脊、星际穿越、月球、吉卜力（龙猫）、财神 · 清爽、龙珠 ×2（筋斗云 / 超级赛亚人），以及地球之夜、山间小径、林间灯笼、复古机车、竹林深处、海上日落、青绿流体、海岸回廊、墨青波浪、灯塔黄昏、仙女座星系、世界地图、青山明月、蓝色波浪等 14 款风景摄影 / 矢量主题；外加三款整页 CSS 定制主题「QQ 2008 / 腾讯云 TDP（浅色 · 深色）」、6 款场景插画 CSS 风景主题（Aurora · 山野极光 / Dream · 云端梦境 / Forest · 幽林 / Midnight · 子夜 / Paper · 纸韵 / Sakura · 樱吹雪），以及 10 套无图纯配色主题（专注夜色 / 暖纸墨色 / 赛博龙虾 / 舞台极光 / 玫瑰红毯 / 银白偶像 / 樱粉梦境 / 机械核心 / 魔法星夜 / 像素校园，移植自 workbuddy-skin-skill）
+- **65 个内置预设**：Miku、原神 ×2、鸣潮 ×2、火影忍者 ×2、恋与深空 ×2、EVA 初号机、黑神话 · 悟空、猫鼠 · 夜巡、小可爱、冷杉雨（MP4 视频）、月夜、温泉雪（MP4 视频）、水墨武士（MP4 视频）、极光之夜、静谧星空、液态玻璃 ×2、梵高 · 星月夜、高达、瑞克和莫蒂、日落山脊、星际穿越、月球、吉卜力（龙猫）、财神 · 清爽、龙珠 ×2（筋斗云 / 超级赛亚人），以及地球之夜、山间小径、林间灯笼、复古机车、竹林深处、海上日落、青绿流体、海岸回廊、墨青波浪、灯塔黄昏、仙女座星系、世界地图、青山明月、蓝色波浪等 14 款风景摄影 / 矢量主题；外加四款整页 CSS 定制主题「QQ 2008 / 腾讯云 TDP（浅色 · 深色）/ Sky Clock · 四时天空（天色随真实时间流转，日出日落）」、6 款场景插画 CSS 风景主题（Aurora · 山野极光 / Dream · 云端梦境 / Forest · 幽林 / Midnight · 子夜 / Paper · 纸韵 / Sakura · 樱吹雪），以及 10 套无图纯配色主题（专注夜色 / 暖纸墨色 / 赛博龙虾 / 舞台极光 / 玫瑰红毯 / 银白偶像 / 樱粉梦境 / 机械核心 / 魔法星夜 / 像素校园，移植自 workbuddy-skin-skill）
 - **深浅色自动适配**：根据主题配色的 surface 明度自动切换 WorkBuddy 的 `data-vscode-theme-kind`，让 VS Code 原生控件（输入框、按钮等）跟着深浅色变
 - **会话页壁纸降噪**：新建任务页壁纸全量透出；进入会话/详情页时菜单脚本自动打 `body[data-wb-skin-page="chat"]` 标记（机制同 TDP 主题的 `data-tdp-page`），图片主题在 `#root` 叠 50% 表面色纱罩、视频主题的视频层压到 35% 不透明度，壁纸仍清晰可辨而对话文字可读；回到首页自动恢复
 - **视频重影防护**：chat 页视频挂载成功时打 `data-wb-skin-video="on"` 标记，`#root` 撤掉海报帧底图只留纱罩盖表面色，避免半透明视频与静态海报帧错位叠出重影；视频缺失时海报兜底照常
 - **视频层自愈**：视频层挂在 `#root` 内，React 首渲/整树替换会把它静默移除（重启后注入早于 React 首渲的竞态窗口必现）；布局观察者的逐帧巡检发现脱离文档即重挂并恢复播放，页面重新可见时也会主动补检
 - **详情面板壁纸透出**：文件/代码预览面板磨砂半透明（60% 表面色 + 模糊），内部组件与 Monaco 编辑器各背景层透化，壁纸在面板下隐约可辨；md 代码块与表格保留 40% 表面色浮层保住「块」的边界辨识度
+- **气泡与侧栏融合**：已发出的对话气泡以 16% 文字色洗底透化（钉在 `.cr-theme` 作用域，明暗主题双向自适应），壁纸从气泡下隐约透出而文字清晰；侧栏空间名行常态透明、悬停才洗底，不再遮挡壁纸
 - **双平台**：macOS（`.command`）+ Windows（双击 `Start.bat`，或 `.ps1`）
 - **随时还原**：暂停皮肤或切回原生界面，官方安装包始终原封不动
 
@@ -105,7 +106,7 @@ node src/cli.mjs apply --theme mice-cat
 
 ### 🪟 Windows
 
-**双击根目录的 `Start.bat` 即可**（推荐入口）。它是 `scripts\apply.ps1` 的批处理包装，双击后依次完成：正常退出 WorkBuddy → 以本机调试模式（CDP 端口 9223）重新打开 → 等待调试端口就绪 → 注入皮肤；不带参数时自动恢复你上次在 🎨 菜单里的选择。
+**双击根目录的 `Start.bat` 即可**（推荐入口）。它是 `scripts\apply.ps1` 的批处理包装，双击后依次完成：探测 CDP 端口 9223 → 若未就绪则正常退出 WorkBuddy 并以本机调试模式重新打开、等待端口就绪（**已处于调试模式时跳过重启，直接注入，进行中的任务不受影响**）→ 注入皮肤；不带参数时自动恢复你上次在 🎨 菜单里的选择。
 
 - **指定主题**：命令行执行 `Start.bat mice-cat`（双击等价于无参数运行）
 - **执行策略零配置**：Start.bat 内部以 `-ExecutionPolicy Bypass` 调起 PowerShell，双击不受系统执行策略限制，无需任何前置设置
@@ -127,7 +128,7 @@ node src/cli.mjs apply --theme mice-cat
 > ⚠️ 直接运行 `apply.ps1` 若报执行策略错误，执行：
 > `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`（双击 Start.bat 走 Bypass，无需此步骤）
 
-应用皮肤时 WorkBuddy 会被正常退出并以本机调试模式重新打开，**当前任务请先保存**。
+应用皮肤时，仅当 WorkBuddy 未处于调试模式（CDP 端口未监听）才会被正常退出并以本机调试模式重新打开——**此时当前任务请先保存**；若已在调试模式（例如之前 apply 过），则跳过重启直接注入，任务不受影响。macOS 的 `apply.command` 目前总是重启。
 
 之后的日常切换都在 WorkBuddy 右上角 🎨 菜单里完成。暂停皮肤、回到原生外观：
 
@@ -202,7 +203,7 @@ node src/cli.mjs apply --theme my-skin
 只有 `schemaVersion`、`id`、`name` 和 `hero` 必填。素材必须位于主题目录内，颜色和文案（`copy`）都可省略。
 
 - `surface` 的明度决定 light/dark 模式（亮度 > 140 为 light），自动切换 WorkBuddy 的 `data-vscode-theme-kind`
-- 首页/空会话主标题自动渲染为 `accent`→`secondary` 渐变文字，左上角 WorkBuddy 字标变为双色字标（Work=文本色、Buddy=`accent`，硬切渐变实现）；两者均随主题/自定义取色自适应。`copy.tagline` 配置时在标题下方输出渐变标语（如内置的「原神 · 晨曦：晨曦启程，冒险不止」）
+- 首页/空会话主标题自动渲染为 `accent`→`secondary` 渐变文字，并叠加 4 向 0 模糊 drop-shadow 实心轮廓（轮廓色 `--wb-halo` 随渐变中点 oklch 亮度自适应取黑/白，繁忙壁纸上仍清晰）；左上角 WorkBuddy 字标变为双色字标（Work=文本色、Buddy=`accent`，硬切渐变实现）；两者均随主题/自定义取色自适应。`copy.tagline` 配置时在标题下方输出同款渐变标语（如内置的「原神 · 晨曦：晨曦启程，冒险不止」），图片主题与纯 CSS 主题均支持
 - `hero` 支持 PNG / JPG / JPEG / WebP / GIF / AVIF / MP4（GIF、动态 WebP、动态 AVIF 保留动画播放；AVIF 需 Chromium 85+）
 - `hero` 为 MP4（H.264，限 30MB）时是视频主题：必须再配 `poster` 海报帧图片作 CSS 底图兜底，视频在注入时预置进渲染进程 IndexedDB（按字节数判重，重复 apply 不重复传输），以固定背景层循环静音播放。示例：`"hero": "hero.mp4", "poster": "hero.webp"`
 
@@ -229,6 +230,7 @@ node src/cli.mjs apply --theme my-skin
 - 可选 `thumbnail` 字段：「选择主题」弹窗卡片封面图（主题目录内的 PNG/JPEG/WebP/GIF/AVIF，≤512KB，建议 640×400 WebP）。纯 CSS 主题没有 hero，未配置时显示 accent→secondary 渐变色块；图片/视频主题也可配置，覆盖从 hero/poster 自动提取的封面。内置 QQ 2008 / TDP 两款的 `thumbnail.webp` 由吉祥物素材叠加主题渐变合成
 - 可选 `mascot` 字段：首页/会话页输入框上方「成长伙伴」机器人的主题替换形象（主题目录内的 PNG/JPEG/WebP/GIF/AVIF，≤256KB，建议 256×256 透明底 WebP；GIF/动态 WebP 保留动画）。任意类型主题均可配置；未配置的主题不输出替换规则，原生机器人原样保留。实现为纯 CSS（Chromium `img { content: url() }` 整体换图 + `object-fit: contain` 入框 + 隐藏原生悬停动图 video），作用于 `wb-home-route__growth-buddy` / `conversation-input__growth-buddy` 两个槽位，随主题切换自动生效/还原
 - 可选 `js` 字段（如 `"js": "skin.js"`）携带伴随脚本：主题激活时作为函数体执行（`new Function`），返回值若是函数则作为拆除回调，在切换主题/恢复原生/暂停注入时调用；js 内的 `"./asset"` 相对资源引用（图片/音频/视频）同样内联为 data URL。用于 CSS 做不到的 DOM 注入与交互行为——TDP 主题主界面的宇航员动效层、QQ 2008 的音效（消息/失败/敲门，复用旧项目的 `WORKBUDDY_THEME_SOUND_ENABLED`/`VOLUME` 设置键，1200ms 节流）与企鹅挂件均由此实现。页面 CSP 禁 eval 时降级为警告，CSS 皮肤本体不受影响
+- 可选 `dynamicMode` 字段（布尔，须与 `js` 同配）：声明后菜单**不钉住**明暗模式（`applyMode` 跳过 pin），明暗写入权交给伴随 js——用于按时间等外部条件动态切换深浅的定制主题（如 Sky Clock 按天空亮度全天联动 `data-vscode-theme-kind` 与六个模式类名，写法和菜单 `writeMode` 同构）。普通主题不要开启：缺少钉住会让界面跟随应用默认模式
 
 ## ⌨️ 命令行
 
@@ -268,12 +270,13 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 
 单元测试覆盖不依赖真实 WorkBuddy 的核心逻辑（用假 CDP Session / 假 WebSocket 与临时目录替代真实依赖，运行 WorkBuddy 与否都能跑通）：
 
-- `test/theme-schema.test.mjs` — 主题清单校验：`poster` 规则（视频 hero 必填、图片 hero 禁填、必须是主题目录内的图片相对路径）、纯 CSS 主题规则（`css` 字段替代 `hero`、无 hero 时禁带 poster）与 `loadTheme` 的 realpath 逃逸防护（junction / symlink）、目录内合法符号链接、清单 JSON 报错带路径
+- `test/theme-schema.test.mjs` — 主题清单校验：`poster` 规则（视频 hero 必填、图片 hero 禁填、必须是主题目录内的图片相对路径）、纯 CSS 主题规则（`css` 字段替代 `hero`、无 hero 时禁带 poster）、`dynamicMode` 规则（布尔、须与 `js` 同配）与 `loadTheme` 的 realpath 逃逸防护（junction / symlink）、目录内合法符号链接、清单 JSON 报错带路径
 - `test/injector.test.mjs` — 视频预置链路：4MB 分块切分与暂存清理、写入字节数校验、`Uint8Array.fromBase64` 快路径 + `atob` 回退 + 主线程让出、按尺寸判重跳过、单个渲染进程失败降级为警告、本地文件缺失降级；CSS 主题资源内联（`url(./asset)` → data URL、逃逸目录/不支持类型拒绝、绝对 URL 保留）；`applySkin` 每个渲染进程只开一条会话（视频预置失败时换新连接继续注入）；`removeSkin` 先调菜单 teardown
-- `test/skin-menu.test.mjs` — 🎨 菜单注入脚本：生成脚本可被 JS 引擎编译、切换 / 上传 / 恢复原生各路径的异常兜底与错误日志、大图解码快路径、IndexedDB 阻塞与中止处理、重复注入 / 暂停时的 teardown（断观察者、解除明暗钉住、移除全局监听）、布局校准按 rAF 合帧、自定义主题列表缓存、自愈重挂（菜单/样式/定位按钮被框架移除后自动重挂，teardown 先断观察者再移除）、右侧定位按钮（四键齐全、容器/锚点启发式与兜底、平滑滚动、滚轮取消动画、显隐合帧、teardown 拆除）、会话/详情页标记（home/chat 探测与路由切换自动更新、teardown 清除）、视频层降噪（chat 页 35% 不透明度）与重影防护（视频挂载标记同步维护、chat+在挂时撤海报帧）
-- `test/skin-css.test.mjs` — 皮肤 CSS 生成：首页主标题 accent→secondary 渐变文字与表面色描边（`-webkit-text-stroke` + `paint-order: stroke fill`，替代会透过字形的 `text-shadow` 和繁忙壁纸上易糊的 `drop-shadow` 光晕）、`copy.tagline` 渐变标语（未配置时不注入文案）、左上角字标硬切渐变双色且全 `var()` 引用（自定义取色自动适配，不硬编码色值）、会话/详情页壁纸降噪（chat 页 50% 纱罩、配色主题不输出降噪规则）、详情面板透化（内部组件/Monaco 各背景层透明、md 代码块与表格 40% 浮层、配色主题不回归）
+- `test/skin-menu.test.mjs` — 🎨 菜单注入脚本：生成脚本可被 JS 引擎编译、切换 / 上传 / 恢复原生各路径的异常兜底与错误日志、大图解码快路径、IndexedDB 阻塞与中止处理、重复注入 / 暂停时的 teardown（断观察者、解除明暗钉住、移除全局监听）、`dynamicMode` 主题跳过钉住（明暗写入权交伴随 js）、布局校准按 rAF 合帧、自定义主题列表缓存、自愈重挂（菜单/样式/定位按钮被框架移除后自动重挂，teardown 先断观察者再移除）、右侧定位按钮（四键齐全、容器/锚点启发式与兜底、平滑滚动、滚轮取消动画、显隐合帧、teardown 拆除）、会话/详情页标记（home/chat 探测与路由切换自动更新、teardown 清除）、视频层降噪（chat 页 35% 不透明度）与重影防护（视频挂载标记同步维护、chat+在挂时撤海报帧）
+- `test/skin-css.test.mjs` — 皮肤 CSS 生成：首页主标题 accent→secondary 渐变文字与 4 向 0 模糊 drop-shadow 实心轮廓（轮廓色 `--wb-halo` 随渐变中点 oklch 亮度自适应黑/白，清掉原生 text-shadow 防重影）、`copy.tagline` 渐变标语（未配置时不注入文案）、左上角字标硬切渐变双色且全 `var()` 引用（自定义取色自动适配，不硬编码色值）、已发出对话气泡透化（`.cr-theme` 作用域 `--cr-user-bubble-bg` 16% 文字色洗底，明暗双向自适应）、侧栏一级树行常态透明/悬停洗底、会话/详情页壁纸降噪（chat 页 50% 纱罩、配色主题不输出降噪规则）、详情面板透化（内部组件/Monaco 各背景层透明、md 代码块与表格 40% 浮层、配色主题不回归）
 - `test/theme-store.test.mjs` — 主题列表：多目录同 id 去重（内置优先）、缺 `name` 不再崩、跳过坏清单与 `.tmp-` 残留目录；`create` 名称校验
 - `test/bundled-themes.test.mjs` — 内置主题集成护栏：`themes/` 下每个目录都通过 `loadTheme` 完整校验、主题 id 与目录名一致且不重复、随主题的 `js` 文本可被 JS 引擎编译
+- `test/sky-clock.test.mjs` — Sky Clock 引擎（最小 DOM 桩跑真实 skin.js）：激活即写入 `--sky-*` 变量与重建的场景 SVG data URL（山脊沿用 aurora 轮廓）、明暗与 `--sky-scheme` 一致且类名/属性与菜单 `writeMode` 同构、teardown 清定时器/监听/全部内联变量且幂等
 - `test/cdp-client.test.mjs` — CDP 会话：默认不 enable 任何域、`enableDomains` 显式开启与参数校验
 - `test/cli.test.mjs` — `apply` 编排：坏主题不进菜单且保序、选中主题失败即报错、恢复上次自定义皮肤、恢复上次原生浅色/深色（按默认主题注入菜单但不应用皮肤，只钉明暗）、记住的主题失效回退默认；状态回执（apply/pause 成败落盘、写失败不阻断）；`doctor` 的 Node 版本检查与状态展示
 - `test/state-store.test.mjs` — 状态回执：读写往返、浅合并、损坏文件回退 null、原子写入
@@ -331,6 +334,7 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 | `qq2008` | QQ 2008 | 蓝 · 浅色 · CSS 定制主题（主窗口企鹅大图背景，含音效与企鹅挂件） |
 | `tdp-pro` | 腾讯云 TDP | 靛紫 · 浅色 · CSS 定制主题（宇航员动效层） |
 | `tdp-pro-dark` | 腾讯云 TDP · 深色 | 靛紫 · 深色 · CSS 定制主题 |
+| `sky-clock` | Sky Clock · 四时天空 | 天色随真实时间流转 · CSS 定制主题（每小时重建天空场景：太阳/月亮弧线移动、日出日落大小颜色变化、界面明暗全天联动） |
 | `focus-night` | Focus Night · 专注夜色 | 青 · 深色 · CSS 配色主题 |
 | `warm-paper` | Warm Paper · 暖纸墨色 | 赭石 · 浅色 · CSS 配色主题 |
 | `cyber-lobster` | Cyber Lobster · 赛博龙虾 | 珊瑚红 × 赛博青 · 深色 · CSS 配色主题 |
@@ -358,6 +362,7 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 - 每次 apply / pause 会在状态目录落一份回执（`state.json`：时间、主题、成败、错误信息），`doctor` 会一并展示；写入失败不影响换肤本身
 - 不修改官方安装目录与代码签名
 - 深色主题已适配 `data-vscode-theme-kind` 自动切换；「原生界面 · 深色」可显式钉住暗色（选择会持久化，重新 apply 自动恢复）
+- 🎨 菜单切肤用的是 apply 时烘焙进菜单脚本的 CSS **快照**：修改 `src/skin-css.mjs` 等源码后必须重新 apply 才会生效，运行中的实例不会因源码变动自动更新
 - 当前版本针对 WorkBuddy 的 `--cb-*` 设计变量系统和 `[data-view-id]` DOM 锚点适配，与 Codex 的 DOM 结构完全不同
 
 ## 🔬 技术原理

@@ -4,6 +4,7 @@
   "name": "黑神话 · 悟空",
   "order": 13,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#C9A24B",
     "secondary": "#A94438",

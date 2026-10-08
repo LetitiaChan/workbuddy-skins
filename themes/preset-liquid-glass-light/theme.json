@@ -2,8 +2,9 @@
   "schemaVersion": 1,
   "id": "preset-liquid-glass-light",
   "name": "液态玻璃·亮",
-  "order": 34,
+  "order": 39,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#6D8BE8",
     "secondary": "#C9A2E8",

@@ -175,6 +175,8 @@ async function themeEntryBody(loadedTheme) {
       text: loadedTheme.manifest.colors?.text,
       css,
       group: loadedTheme.manifest.group ?? "custom",
+      // dynamicMode：明暗不钉住，由伴随 js 动态改写（菜单侧据此跳过 applyMode 钉住）
+      ...(loadedTheme.manifest.dynamicMode ? { dynamicMode: true } : {}),
       ...(js ? { js } : {}),
     };
   }

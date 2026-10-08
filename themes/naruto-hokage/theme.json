@@ -4,6 +4,7 @@
   "name": "火影 · 鸣人",
   "order": 2,
   "hero": "hero.webp",
+  "mascot": "mascot.webp",
   "colors": {
     "accent": "#f2801e",
     "secondary": "#ffd166",
