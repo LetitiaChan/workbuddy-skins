@@ -508,12 +508,14 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     }
   };
 
-  // 视频/动图主题在卡片缩略图左上角加闪电角标（feather zap 内联 SVG，stroke=currentColor）
+  // 视频/动图主题在卡片缩略图左上角加闪电角标（feather zap 内联 SVG）。
+  // 可见性强化：描边款空心图标在亮封面（雪景/水墨白底）上几乎不可见——
+  // 改为实心填充 + 深色磨砂底板（backdrop blur）+ 亮描边，深浅封面均可辨
   const attachBadge = (item, kind) => {
     if (kind !== "video" && kind !== "animated") return;
     const tag = document.createElement("span");
-    tag.style.cssText = "position:absolute;left:6px;top:6px;width:16px;height:16px;color:#ffd54a;box-sizing:border-box;filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));";
-    tag.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
+    tag.style.cssText = "position:absolute;left:6px;top:6px;width:20px;height:20px;border-radius:6px;background:rgba(10,14,20,.55);border:1px solid rgba(255,255,255,.28);box-sizing:border-box;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);box-shadow:0 1px 4px rgba(0,0,0,.35);";
+    tag.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12" fill="#ffd54a" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
     item.firstElementChild.appendChild(tag);
   };
 
