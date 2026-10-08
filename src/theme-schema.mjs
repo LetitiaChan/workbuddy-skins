@@ -203,13 +203,27 @@ export function validateThemeManifest(input) {
   };
 }
 
-async function resolveMediaFile({ root, realRoot }, mediaPath, label) {
+async function resolveMediaFile(
+  { root, realRoot },
+  mediaPath,
+  label,
+  { missingAsNull = false } = {},
+) {
   const filePath = resolve(root, mediaPath);
   if (!isInside(root, filePath)) {
     throw new Error(`theme ${label} escapes the theme directory`);
   }
 
-  const realFilePath = await realpath(filePath);
+  let realFilePath;
+  try {
+    realFilePath = await realpath(filePath);
+  } catch (error) {
+    // missingAsNull：配置了该字段但文件缺失时按未配置处理（当前仅 mascot 使用）
+    if (missingAsNull && (error.code === "ENOENT" || error.code === "ENOTDIR")) {
+      return null;
+    }
+    throw error;
+  }
   if (!isInside(realRoot, realFilePath)) {
     throw new Error(`theme ${label} escapes the theme directory`);
   }
@@ -255,9 +269,10 @@ export async function loadTheme(themeDir) {
     throw new Error(`theme thumbnail exceeds the ${MAX_THEME_THUMBNAIL_BYTES / 1024}KB limit`);
   }
   // mascot 形象图以 data URL 内联进该主题的 CSS 条目随菜单脚本下发；
-  // 原生槽位仅 140px 见方，比 thumbnail 卡得更小
+  // 原生槽位仅 140px 见方，比 thumbnail 卡得更小。
+  // 图片缺失时按未配置处理，主题照常加载，保留原生机器人
   const mascot = manifest.mascot
-    ? await resolveMediaFile(dirs, manifest.mascot, "mascot")
+    ? await resolveMediaFile(dirs, manifest.mascot, "mascot", { missingAsNull: true })
     : null;
   if (mascot && mascot.size > MAX_THEME_MASCOT_BYTES) {
     throw new Error(`theme mascot exceeds the ${MAX_THEME_MASCOT_BYTES / 1024}KB limit`);

@@ -293,17 +293,19 @@ test("mascot：可选，图片/视频/CSS 主题均可配，路径必须是目�
   }
 });
 
-test("loadTheme：解析 mascotPath，缺失或超过体积上限时拒绝", async () => {
+test("loadTheme：mascot 图片缺失时按未配置处理，超过体积上限时拒绝", async () => {
   await withTempDir(async (dir) => {
     await writeFile(join(dir, "hero.png"), Buffer.alloc(16, 1));
     await writeFile(
       join(dir, "theme.json"),
       JSON.stringify({ schemaVersion: 1, id: "demo-theme", name: "Demo", hero: "hero.png", mascot: "mascot.webp" }),
     );
-    await assert.rejects(loadTheme(dir));
-    await writeFile(join(dir, "mascot.webp"), Buffer.alloc(1024, 1));
+    // 配置了 mascot 但文件缺失：加载成功，mascotPath 为 null，等价于未配置
     const loaded = await loadTheme(dir);
-    assert.ok(loaded.mascotPath.endsWith("mascot.webp"));
+    assert.equal(loaded.mascotPath, null);
+    await writeFile(join(dir, "mascot.webp"), Buffer.alloc(1024, 1));
+    const loaded2 = await loadTheme(dir);
+    assert.ok(loaded2.mascotPath.endsWith("mascot.webp"));
     await writeFile(join(dir, "mascot.webp"), Buffer.alloc(256 * 1024 + 1, 1));
     await assert.rejects(loadTheme(dir), /mascot exceeds/);
   });
