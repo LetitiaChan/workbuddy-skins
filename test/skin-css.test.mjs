@@ -90,10 +90,13 @@ test("详情面板内部透化：文件预览/Monaco 编辑器白底透明，由
   const css = buildSkinCss({ theme: baseTheme, heroDataUrl: HERO });
   // 壳层磨砂同时覆盖 detail-panel 与自动化产物面板（artifact-panel 复用 detail-* 同族组件）
   assert.ok(css.includes("[data-view-id=detail-panel],\n[class*=artifact-panel] {"));
-  // 内层组件、代码预览容器（哈希类子串匹配）、块编辑器与 Monaco 各背景层全部透化
+  // 内层组件、整版包裹层 .detail-layout（读 --cb-bg-primary 成主题表面色实底）、
+  // 代码预览容器（哈希类子串匹配）、块编辑器与 Monaco 各背景层全部透化
   // （CDP 实测原生均为不透明 rgb(255,255,255)），作用域为 :is(双宿主)
   const host = ":is([data-view-id=detail-panel], [class*=artifact-panel])";
   assert.ok(css.includes(host + " .detail-panel,"));
+  assert.ok(css.includes(host + " .detail-panel-container,"));
+  assert.ok(css.includes(host + " .detail-layout {"), ".detail-layout 整版包裹层应透化，否则主题表面色实底盖住壁纸");
   assert.ok(css.includes(host + " .detail-main__body,"));
   assert.ok(css.includes(host + " [class*=codePreviewContainer],"));
   assert.ok(css.includes(host + " .sc-editor,"));
@@ -108,6 +111,7 @@ test("详情面板内部透化：文件预览/Monaco 编辑器白底透明，由
   // 配色主题同块生效：根层实底 surface，透明后颜色一致（不回归）
   const palette = buildPaletteCss({ theme: baseTheme });
   assert.ok(palette.includes(host + " .monaco-editor-background,"));
+  assert.ok(palette.includes(host + " .detail-layout {"), "共享块同源，配色主题 .detail-layout 同步透化");
 });
 
 test("「为你推荐」技能推荐条：原生不透明白条改为磨砂半透明，全 var() 引用", () => {
@@ -142,6 +146,30 @@ test("侧栏一级树行：透化常驻实底块、悬停走文字色洗底，�
     assert.ok(css.includes(header), "一级树行常态应透明（原生钉 --wb-sidebar-bg 实底，磨砂侧栏上成浅色块）");
     assert.ok(css.includes(hover), "一级树行悬停应为文字色洗底");
   }
+});
+
+test("助理页工作区与列表抽屉：claw-workspace 透化，claw-sidebar-drawer 随主题类型磨砂/浮层", () => {
+  const block = (css, selector) => css.slice(css.indexOf(selector + " {"), css.indexOf("}", css.indexOf(selector + " {")) + 1);
+  // 图片主题：.claw-workspace 原生 rgb(31,31,31) 实底整版盖住 #root 壁纸，透化即可——
+  // 底部可读性渐变由外层 main-content 提供，chat 页文字可读性由 50% 纱罩托底
+  const image = buildSkinCss({ theme: baseTheme, heroDataUrl: HERO });
+  assert.ok(image.includes(".claw-workspace {\n  background: transparent !important;\n}"));
+  // aside.claw-sidebar-drawer 原生 rgb(41,41,41) 实底块：与主侧栏同一磨砂语言，
+  // 强度/模糊参数须与 [data-view-id=sidebar] 逐行对齐（78% surface + blur(20px) saturate(1.12)）
+  const imageDrawer = block(image, ".claw-sidebar-drawer");
+  const imageSidebar = block(image, "[data-view-id=sidebar]");
+  for (const line of ["background: color-mix(in srgb, var(--wb-surface) 78%, transparent) !important", "backdrop-filter: blur(20px) saturate(1.12)"]) {
+    assert.ok(imageDrawer.includes(line), `抽屉应与主侧栏参数对齐：${line}`);
+    assert.ok(imageSidebar.includes(line), `主侧栏基准行应存在：${line}`);
+  }
+  // 配色主题：无壁纸，抽屉与配色侧栏同一浮层配方（surface 92% 混文字色 5%，明暗自适应），实底不磨砂
+  const palette = buildPaletteCss({ theme: baseTheme });
+  assert.ok(palette.includes(".claw-workspace {\n  background: transparent !important;\n}"));
+  const paletteDrawer = block(palette, ".claw-sidebar-drawer");
+  const paletteSidebar = block(palette, "[data-view-id=sidebar]");
+  assert.ok(paletteDrawer.includes("background: color-mix(in srgb, var(--wb-surface) 92%, var(--wb-text) 5%) !important"));
+  assert.ok(paletteSidebar.includes("color-mix(in srgb, var(--wb-surface) 92%, var(--wb-text) 5%)"), "抽屉浮层应与配色侧栏同配方");
+  assert.ok(!paletteDrawer.includes("backdrop-filter"), "配色主题无壁纸可透，抽屉不应磨砂");
 });
 
 test("已发出对话气泡：--cr-user-bubble-bg 钉为文字色洗底（.cr-theme 作用域），图片/配色主题共用", () => {
