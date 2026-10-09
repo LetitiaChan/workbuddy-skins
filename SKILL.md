@@ -140,7 +140,7 @@ No official files are touched.
   "定制主题" group in the 🎨 menu, scenery CSS themes under "风景主题"
   (theme.json `group: "scenery"`), pure-color CSS themes under "配色主题"
   (theme.json `group: "palette"`), and image/video themes under "图片主题".
-- 38 built-in themes also ship a `mascot.webp` (theme.json `mascot` field) that
+- 37 built-in themes also ship a `mascot.webp` (theme.json `mascot` field) that
   replaces the growth-buddy robot above the home/conversation input with theme
   art — a pure CSS swap (`img { content: url() }` + `object-fit: contain`,
   animated GIF/WebP kept) that applies and reverts with the theme switch;
