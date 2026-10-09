@@ -229,7 +229,7 @@ node src/cli.mjs apply --theme my-skin
 - `order` 控制菜单排序（数值小者在前）；CSS 主题在菜单中按可选 `group` 字段分组：`"custom"`（默认，「定制主题」，整页风格移植如 QQ 2008 / TDP）、`"palette"`（「配色主题」，无图纯配色移植如内置 10 套 workbuddy-skin-skill 配色）或 `"scenery"`（「风景主题」，场景插画移植如内置 Aurora / Dream / Forest / Midnight / Paper / Sakura 六款）；图片/视频主题归入「图片主题」分组，不携带 `group` 字段
 - `"palette"` 主题的 `skin.css` 只是**装饰层**（主内容区签名渐变）：注入时由 `buildPaletteCss` 按 `colors` 四色生成换色基座（与图片主题同源的 `--cb-*` 变量覆盖 + 实底表面 + 组件点缀）前置拼接，装饰层叠在最后。这样移植来的配色走当前版本的设计变量系统全组件生效，不依赖移植源的旧版 DOM 类名
 - 可选 `thumbnail` 字段：「选择主题」弹窗卡片封面图（主题目录内的 PNG/JPEG/WebP/GIF/AVIF，≤512KB，建议 640×400 WebP）。纯 CSS 主题没有 hero，未配置时显示 accent→secondary 渐变色块；图片/视频主题也可配置，覆盖从 hero/poster 自动提取的封面。内置 QQ 2008 / TDP 两款的 `thumbnail.webp` 由吉祥物素材叠加主题渐变合成
-- 可选 `mascot` 字段：首页/会话页输入框上方「成长伙伴」机器人的主题替换形象（主题目录内的 PNG/JPEG/WebP/GIF/AVIF，≤256KB，建议 256×256 透明底 WebP；GIF/动态 WebP 保留动画）。任意类型主题均可配置；未配置的主题不输出替换规则，原生机器人原样保留。实现为纯 CSS（Chromium `img { content: url() }` 整体换图 + `object-fit: contain` 入框 + 隐藏原生悬停动图 video），作用于 `wb-home-route__growth-buddy` / `conversation-input__growth-buddy` 两个槽位，随主题切换自动生效/还原
+- 可选 `mascot` 字段：首页/会话页输入框上方「成长伙伴」机器人的主题替换形象（主题目录内的 PNG/JPEG/WebP/GIF/AVIF，≤256KB，建议 256×256 透明底 WebP；GIF/动态 WebP 保留动画）。任意类型主题均可配置；未配置的主题不输出替换规则，原生机器人原样保留。实现为纯 CSS（Chromium `img { content: url() }` 整体换图 + `object-fit: contain` 入框 + 隐藏原生悬停动图 video），作用于 `wb-home-route__growth-buddy` / `conversation-input__growth-buddy` 两个槽位，随主题切换自动生效/还原。可搭配 `mascotScale`（0.5~3，默认 1，以槽位底部居中为锚点缩放，形象从站立点向上放大）与 `mascotOffset`（`{"x":0,"y":0}`，单位 px，±80 内，正 x 向右、正 y 向下，缩放之后施加）微调显示——按形象主体在图内的包围盒调参，保证上半身露出、头顶与左右不被裁出 140px 槽位框；两者须与 `mascot` 同配，默认值时不输出 transform，与历史行为一致
 - 可选 `js` 字段（如 `"js": "skin.js"`）携带伴随脚本：主题激活时作为函数体执行（`new Function`），返回值若是函数则作为拆除回调，在切换主题/恢复原生/暂停注入时调用；js 内的 `"./asset"` 相对资源引用（图片/音频/视频）同样内联为 data URL。用于 CSS 做不到的 DOM 注入与交互行为——TDP 主题主界面的宇航员动效层、QQ 2008 的音效（消息/失败/敲门，复用旧项目的 `WORKBUDDY_THEME_SOUND_ENABLED`/`VOLUME` 设置键，1200ms 节流）与企鹅挂件均由此实现。页面 CSP 禁 eval 时降级为警告，CSS 皮肤本体不受影响
 - 可选 `dynamicMode` 字段（布尔，须与 `js` 同配）：声明后菜单**不钉住**明暗模式（`applyMode` 跳过 pin），明暗写入权交给伴随 js——用于按时间等外部条件动态切换深浅的定制主题（如 Sky Clock 按天空亮度全天联动 `data-vscode-theme-kind` 与六个模式类名，写法和菜单 `writeMode` 同构）。普通主题不要开启：缺少钉住会让界面跟随应用默认模式
 
@@ -335,7 +335,7 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 | `qq2008` | QQ 2008 | 蓝 · 浅色 · CSS 定制主题（主窗口企鹅大图背景，含音效与企鹅挂件） |
 | `tdp-pro` | 腾讯云 TDP | 靛紫 · 浅色 · CSS 定制主题（宇航员动效层） |
 | `tdp-pro-dark` | 腾讯云 TDP · 深色 | 靛紫 · 深色 · CSS 定制主题 |
-| `sky-clock` | Sky Clock · 四时天空 | 天色随真实时间流转 · CSS 定制主题（每小时重建天空场景：太阳/月亮弧线移动、日出日落大小颜色变化、月相按真实朔望月推算（盈右亏左、弦月界线退化直线）、白天绿山空气透视配色、朝霞/晚霞粉色雾、正午白云、界面明暗全天联动、卡片封面为昼夜对半合成图） |
+| `sky-clock` | Sky Clock · 四时天空 | 天色随真实时间流转 · CSS 定制主题（每分钟重建天空场景平滑流动：太阳/月亮弧线移动、日出日落大小颜色变化、月相按真实朔望月推算（盈右亏左、弦月界线退化直线）、白天绿山空气透视配色、朝霞/晚霞粉色雾、正午白云、界面明暗全天联动、卡片封面为昼夜对半合成图） |
 | `focus-night` | Focus Night · 专注夜色 | 青 · 深色 · CSS 配色主题 |
 | `warm-paper` | Warm Paper · 暖纸墨色 | 赭石 · 浅色 · CSS 配色主题 |
 | `cyber-lobster` | Cyber Lobster · 赛博龙虾 | 珊瑚红 × 赛博青 · 深色 · CSS 配色主题 |

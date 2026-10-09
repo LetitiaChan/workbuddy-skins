@@ -128,13 +128,18 @@ async function thumbnailDataUrl(loadedTheme) {
 
 // theme.json mascot：读为 data URL 生成「成长伙伴」替换 CSS 块，拼在该主题条目 css 末尾。
 // 与 thumbnail 同理随菜单脚本下发（体积上限已由 loadTheme 校验）；未配置返回空串，
-// 主题 CSS 不含替换规则，原生机器人原样保留。图片/视频与纯 CSS 主题走同一条拼接路径
+// 主题 CSS 不含替换规则，原生机器人原样保留。图片/视频与纯 CSS 主题走同一条拼接路径。
+// mascotScale/mascotOffset 随 manifest 透传（schema 已给默认值；手工构造的 loadedTheme
+// 缺字段时回退 1 / {0,0}，等价于不输出 transform）
 async function mascotCssBlock(loadedTheme) {
   if (!loadedTheme.mascotPath) return "";
   const mime = MIME[extname(loadedTheme.mascotPath).toLowerCase()];
   if (!mime) throw new Error(`主题 ${loadedTheme.manifest.id} 的 mascot 图片类型不受支持`);
   const bytes = await readFile(loadedTheme.mascotPath);
-  return buildMascotCss(`data:${mime};base64,${bytes.toString("base64")}`);
+  return buildMascotCss(`data:${mime};base64,${bytes.toString("base64")}`, {
+    scale: loadedTheme.manifest.mascotScale ?? 1,
+    offset: loadedTheme.manifest.mascotOffset ?? { x: 0, y: 0 },
+  });
 }
 
 async function themeEntry(loadedTheme) {

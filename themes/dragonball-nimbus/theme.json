@@ -5,9 +5,17 @@
   "order": 12,
   "hero": "hero.webp",
   "mascot": "mascot.webp",
+  "mascotScale": 0.62,
+  "mascotOffset": { "x": 0, "y": -45 },
   "appearance": "dark",
-  "previewFocus": { "x": 72, "y": 24 },
-  "thumbnailFocus": { "x": 66, "y": 31 },
+  "previewFocus": {
+    "x": 72,
+    "y": 24
+  },
+  "thumbnailFocus": {
+    "x": 66,
+    "y": 31
+  },
   "thumbnailZoom": 350,
   "colors": {
     "accent": "#4FC3F7",

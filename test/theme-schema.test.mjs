@@ -293,6 +293,35 @@ test("mascot：可选，图片/视频/CSS 主题均可配，路径必须是目�
   }
 });
 
+test("mascotScale/mascotOffset：默认 1 与 {0,0}，需与 mascot 同配，范围校验", () => {
+  const withMascot = { ...base, mascot: "mascot.webp" };
+  const def = validateThemeManifest(withMascot);
+  assert.equal(def.mascotScale, 1);
+  assert.deepEqual(def.mascotOffset, { x: 0, y: 0 });
+  const tuned = validateThemeManifest({ ...withMascot, mascotScale: 1.05, mascotOffset: { x: 0, y: 5 } });
+  assert.equal(tuned.mascotScale, 1.05);
+  assert.deepEqual(tuned.mascotOffset, { x: 0, y: 5 });
+  // offset 缺省键补 0
+  assert.deepEqual(validateThemeManifest({ ...withMascot, mascotOffset: { y: -8 } }).mascotOffset, { x: 0, y: -8 });
+  // 无 mascot 时配置微调参数直接拒绝（防笔误静默失效）
+  assert.throws(() => validateThemeManifest({ ...base, mascotScale: 1.2 }), /mascotScale requires a mascot/);
+  assert.throws(() => validateThemeManifest({ ...base, mascotOffset: { x: 1 } }), /mascotOffset requires a mascot/);
+  for (const scale of [0.4, 3.1, Number.NaN, "1.2"]) {
+    assert.throws(
+      () => validateThemeManifest({ ...withMascot, mascotScale: scale }),
+      /mascotScale must be/,
+      `mascotScale=${JSON.stringify(scale)}`,
+    );
+  }
+  for (const offset of [{ x: 81 }, { y: -100 }, { x: "0" }, 5]) {
+    assert.throws(
+      () => validateThemeManifest({ ...withMascot, mascotOffset: offset }),
+      /mascotOffset/,
+      `mascotOffset=${JSON.stringify(offset)}`,
+    );
+  }
+});
+
 test("loadTheme：mascot 图片缺失时按未配置处理，超过体积上限时拒绝", async () => {
   await withTempDir(async (dir) => {
     await writeFile(join(dir, "hero.png"), Buffer.alloc(16, 1));

@@ -6,6 +6,8 @@
   "hero": "hero.mp4",
   "poster": "hero.webp",
   "mascot": "mascot.webp",
+  "mascotScale": 0.62,
+  "mascotOffset": { "x": 0, "y": -45 },
   "colors": {
     "accent": "#6080a6",
     "secondary": "#cd9989",

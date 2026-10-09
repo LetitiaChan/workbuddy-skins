@@ -279,19 +279,29 @@ body[data-application-name=workbuddy] .conversation-section-content [class*="col
 // （growth-buddy，原生结构 = 容器内 140px img[thumbnail_url] + 悬停播放的 video[base_animated_url]）。
 // Chromium 下 img 的 content:url() 整体替换显示内容，原 src 不再渲染；object-fit 钉 contain
 // 让透明底形象完整入框（原生 cover 会按 120px 容器裁切）；悬停动图 video 隐藏，
-// 避免悬停时盖回原生动画。未配置 mascot 的主题不输出本块，原生机器人原样保留
-export function buildMascotCss(mascotDataUrl) {
+// 避免悬停时盖回原生动画。未配置 mascot 的主题不输出本块，原生机器人原样保留。
+// 可选微调（mascotScale/mascotOffset）：transform 以槽位底部居中为锚点缩放（形象从站立点
+// 向上放大），偏移单位 px（正 x 向右、正 y 向下，scale 之后施加，不随缩放放大）。默认值时
+// 不输出 transform，保持历史快照字节级一致
+export function buildMascotCss(mascotDataUrl, { scale = 1, offset = null } = {}) {
   if (mascotDataUrl === null || mascotDataUrl === undefined) return "";
   if (!/^data:image\/(?:png|jpeg|webp|gif|avif);base64,[a-z0-9+/=]+$/i.test(mascotDataUrl)) {
     throw new Error("mascot 必须是本地 PNG、JPEG、WebP、GIF 或 AVIF 数据");
   }
+  const ox = offset?.x ?? 0;
+  const oy = offset?.y ?? 0;
+  const fmt = (n) => String(Math.round(n * 1000) / 1000);
+  const transform =
+    scale !== 1 || ox !== 0 || oy !== 0
+      ? `  transform: translate(${fmt(ox)}px, ${fmt(oy)}px) scale(${fmt(scale)}) !important;\n  transform-origin: 50% 100% !important;\n`
+      : "";
   return `
 /* 「成长伙伴」形象替换（growth-buddy 槽位：首页 wb-home-route__growth-buddy、
    会话页 conversation-input__growth-buddy，均在输入框上方右侧） */
 :is(.wb-home-route__growth-buddy, .conversation-input__growth-buddy) img {
   content: url(${JSON.stringify(mascotDataUrl)}) !important;
   object-fit: contain !important;
-}
+${transform}}
 :is(.wb-home-route__growth-buddy, .conversation-input__growth-buddy) video {
   display: none !important;
 }

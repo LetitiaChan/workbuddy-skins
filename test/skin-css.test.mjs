@@ -215,5 +215,18 @@ test("成长伙伴形象替换：content:url 换图 + contain 入框 + 隐藏悬
   assert.ok(css.includes(`content: url(${JSON.stringify(MASCOT)}) !important`));
   assert.ok(css.includes("object-fit: contain !important"));
   assert.ok(css.includes("video"), "悬停动图 video 应被隐藏，避免盖回原生动画");
+  // 默认参数不输出 transform（历史快照字节级一致）
+  assert.ok(!css.includes("transform"));
   assert.throws(() => buildMascotCss("https://evil.example/x.png"), /mascot 必须是/);
+});
+
+test("成长伙伴形象替换：mascotScale/mascotOffset 输出底部居中锚点的 transform", () => {
+  const MASCOT = "data:image/webp;base64,bWFzY290";
+  const css = buildMascotCss(MASCOT, { scale: 1.05, offset: { x: 2, y: -6 } });
+  assert.ok(css.includes("transform: translate(2px, -6px) scale(1.05) !important"));
+  assert.ok(css.includes("transform-origin: 50% 100% !important"));
+  // 默认值等价于不输出（scale=1 / offset=0）
+  assert.equal(buildMascotCss(MASCOT, { scale: 1, offset: { x: 0, y: 0 } }), buildMascotCss(MASCOT));
+  // offset 缺省键按 0 处理
+  assert.ok(buildMascotCss(MASCOT, { scale: 1.2 }).includes("translate(0px, 0px) scale(1.2)"));
 });

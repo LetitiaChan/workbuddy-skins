@@ -122,6 +122,32 @@ function normalizeMascot(mascot) {
   return normalizeMediaPath(mascot, "mascot", IMAGE_EXTENSIONS, "PNG, JPEG, WebP, GIF, or AVIF");
 }
 
+// mascot 展示微调（可选，仅在配置 mascot 时有效）：缩放以槽位底部居中为锚点
+// （形象从站立点向上放大），偏移单位 px（正 x 向右、正 y 向下）。默认 1 / {0,0}
+// 与历史行为一致；用于按形象主体比例调 display，保证头顶与左右不被裁出槽位
+function normalizeMascotScale(mascotScale, mascot) {
+  if (mascotScale === undefined || mascotScale === null) return 1;
+  if (mascot === null) throw new Error("theme mascotScale requires a mascot");
+  if (typeof mascotScale !== "number" || !Number.isFinite(mascotScale) || mascotScale < 0.5 || mascotScale > 3) {
+    throw new Error("theme mascotScale must be a number between 0.5 and 3");
+  }
+  return mascotScale;
+}
+
+function normalizeMascotOffset(mascotOffset, mascot) {
+  if (mascotOffset === undefined || mascotOffset === null) return { x: 0, y: 0 };
+  if (mascot === null) throw new Error("theme mascotOffset requires a mascot");
+  if (!isRecord(mascotOffset)) throw new Error("theme mascotOffset must be an object {x, y}");
+  const x = mascotOffset.x ?? 0;
+  const y = mascotOffset.y ?? 0;
+  for (const [key, value] of [["x", x], ["y", y]]) {
+    if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > 80) {
+      throw new Error(`theme mascotOffset.${key} must be a number within ±80px`);
+    }
+  }
+  return { x, y };
+}
+
 function normalizeColors(colors) {
   if (colors != null && !isRecord(colors)) {
     throw new Error("theme colors must be an object");
@@ -186,6 +212,7 @@ export function validateThemeManifest(input) {
   if (hero === null && input.poster !== undefined) {
     throw new Error("theme poster requires a video hero");
   }
+  const mascot = normalizeMascot(input.mascot);
   return {
     schemaVersion: THEME_SCHEMA_VERSION,
     id: input.id,
@@ -197,7 +224,9 @@ export function validateThemeManifest(input) {
     dynamicMode: normalizeDynamicMode(input.dynamicMode, input.js),
     group: normalizeGroup(input.group, css !== null),
     thumbnail: normalizeThumbnail(input.thumbnail),
-    mascot: normalizeMascot(input.mascot),
+    mascot,
+    mascotScale: normalizeMascotScale(input.mascotScale, mascot),
+    mascotOffset: normalizeMascotOffset(input.mascotOffset, mascot),
     colors: normalizeColors(input.colors),
     copy: normalizeCopy(input.copy),
   };

@@ -1,15 +1,25 @@
 /* Sky Clock · 四时天空 —— 天色随真实时间流转的定制主题。
    骨架与取色哲学移植自内置 aurora（山野极光，JanCong/workbuddy-skin，MIT）：
    body 渐变底 + body::before 挂载场景 SVG + 对话框磨砂浮层。
-   区别在于全部色彩都走 CSS 变量：skin.js 每小时按天空时刻表重建一次场景 SVG
+   区别在于全部色彩都走 CSS 变量：skin.js 每分钟按天空时刻表重建一次场景 SVG
    （太阳/月亮弧线、山脊、星星）并改写本文件引用的变量；变量未写入时（CSP 禁 eval
    导致 js 降级）回退到此处声明的黄昏静态默认值与 sky.svg 兜底图，主题依然可用。
+   六个颜色变量经 @property 注册（<color> 可插值），分钟级跳变由 body 上的
+   1.5s 过渡平滑化；过渡时长远小于刷新间隔，不会形成常驻逐帧重绘。
    artwork 层 z-index 2147482900，避让本地 🎨 菜单按钮（同层级 2147483000 区间） */
+@property --sky-top { syntax: "<color>"; inherits: true; initial-value: #4b4c92; }
+@property --sky-mid { syntax: "<color>"; inherits: true; initial-value: #c96b80; }
+@property --sky-bot { syntax: "<color>"; inherits: true; initial-value: #ff9c5c; }
+@property --sky-panel { syntax: "<color>"; inherits: true; initial-value: rgba(38, 44, 88, 0.82); }
+@property --sky-border { syntax: "<color>"; inherits: true; initial-value: rgba(255, 156, 92, 0.25); }
+@property --sky-shadow { syntax: "<color>"; inherits: true; initial-value: rgba(75, 76, 146, 0.22); }
 body {
   color-scheme: var(--sky-scheme, dark);
   --sky-panel: rgba(38, 44, 88, 0.82);
   --sky-border: rgba(255, 156, 92, 0.25);
   --sky-shadow: rgba(75, 76, 146, 0.22);
+  transition: --sky-top 1.5s linear, --sky-mid 1.5s linear, --sky-bot 1.5s linear,
+    --sky-panel 1.5s linear, --sky-border 1.5s linear, --sky-shadow 1.5s linear;
   background: linear-gradient(
     160deg,
     var(--sky-top, #4b4c92) 0%,
