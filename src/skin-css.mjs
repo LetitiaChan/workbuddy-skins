@@ -205,12 +205,14 @@ function buildComponentAccents() {
 }
 
 /* 面板内部：文件预览/代码编辑器/块编辑器的原生不透明白底会盖住壁纸（CDP 实测内层
-   .detail-panel、.detail-main__body、代码预览容器（CSS module 哈希类，子串匹配）、
+   .detail-panel、.detail-layout（整版包裹层，读 --cb-bg-primary 成主题表面色实底）、
+   .detail-main__body、代码预览容器（CSS module 哈希类，子串匹配）、
    md 块编辑器 .sc-editor 与 Monaco 的 .monaco-editor 容器/.monaco-editor-background/.margin/.minimap
    均为 rgb(255,255,255)）。透化后由壳层 60% 磨砂+模糊托底保可读性，文字前景色独立不受影响；
    配色主题根层为实底 surface，透明后颜色与原来一致 */
 :is([data-view-id=detail-panel], [class*=artifact-panel]) .detail-panel,
-:is([data-view-id=detail-panel], [class*=artifact-panel]) .detail-panel-container {
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .detail-panel-container,
+:is([data-view-id=detail-panel], [class*=artifact-panel]) .detail-layout {
   background: transparent !important;
 }
 :is([data-view-id=detail-panel], [class*=artifact-panel]) .detail-main__body,
@@ -437,6 +439,20 @@ body[data-wb-skin-page="chat"] #root {
   background: linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-surface) 50%, transparent) 100%) !important;
 }
 
+/* 助理页工作区（.claw-workspace：助理列表抽屉 + 会话主区，挂在 [data-view-id=main-content] 内）：
+   原生不透明深底 rgb(31,31,31)，整版盖住 #root 壁纸。透化即可——底部可读性渐变由外层
+   main-content 提供，会话页文字可读性由 body[data-wb-skin-page=chat] 的 50% 纱罩托底 */
+.claw-workspace {
+  background: transparent !important;
+}
+
+/* 助理列表二级抽屉（aside.claw-sidebar-drawer）：原生 rgb(41,41,41) 实底块，
+   与主侧栏同一语言磨砂化（78% + 模糊），强度/模糊参数与 [data-view-id=sidebar] 对齐 */
+.claw-sidebar-drawer {
+  background: color-mix(in srgb, var(--wb-surface) 78%, transparent) !important;
+  backdrop-filter: blur(20px) saturate(1.12);
+}
+
 ${buildComponentAccents()}
 
 /* brand 文案（copy 为空时不显示） */
@@ -525,6 +541,17 @@ ${buildVariableOverrides(colors)}
 /* 首页路由默认不透明深底，配色主题下钉为表面色（签名渐变由装饰层叠加） */
 .wb-home-route {
   background: var(--wb-surface) !important;
+}
+
+/* 助理页工作区（.claw-workspace）：原生不透明深底 rgb(31,31,31)，透化透出 #root 实底 surface，
+   与 [data-view-id] 容器同一哲学 */
+.claw-workspace {
+  background: transparent !important;
+}
+
+/* 助理列表二级抽屉：与主侧栏同一浮层（surface 混入少量文字色抬升，明暗自适应） */
+.claw-sidebar-drawer {
+  background: color-mix(in srgb, var(--wb-surface) 92%, var(--wb-text) 5%) !important;
 }
 
 /* 侧边栏选中态：accent 微光，让主题色在导航层可见（替代原生灰块） */
