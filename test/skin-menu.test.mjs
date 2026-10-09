@@ -486,6 +486,24 @@ test("皮肤弹窗：条目 thumb（theme.json thumbnail）优先作封面，非
   assert.ok(script.includes('thumb: theme.group === "palette" ? theme.thumb : theme.thumb ?? thumbOf(theme.css)'));
 });
 
+test("删除自定义主题：同步刷新「最近」行，已删主题不诈尸", () => {
+  const script = build();
+  const start = script.indexOf("const deleteCustom = (id) =>");
+  const body = script.slice(start, script.indexOf("const ensureCustomRow", start));
+  // 残留小卡的点击闭包持有旧 theme 对象（resolveRecent 的 ?? saved 兜底），
+  // 不重渲会让已删主题当会话内被「复活」应用一次
+  assert.ok(body.includes("renderRecent()"), "删除后应重渲最近行");
+});
+
+test("定位按钮：滚动容器缓存过期先 O(1) 重验证，不每 500ms 全文档扫描", () => {
+  const script = build();
+  assert.doesNotThrow(() => new Function(script));
+  // 过期重验证：旧容器仍在文档、仍可滚、未被更优先的 .messages-container 取代时直接续期；
+  // 全量 querySelectorAll("*") 扫描只留给容器失效场景
+  assert.ok(script.includes("const preferredScrollBox = () =>"));
+  assert.ok(script.includes("(!preferred || scrollBox === preferred)"));
+});
+
 test("皮肤弹窗：group 归一化为 custom/palette/scenery/image 四值，配色主题独立成组不混入图片组", () => {
   const script = build({
     entries: [

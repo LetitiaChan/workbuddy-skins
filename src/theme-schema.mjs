@@ -34,7 +34,8 @@ function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function isInside(root, candidate) {
+// 目录逃逸检查：theme-schema 的 resolveMediaFile 与 injector 的 CSS/JS 资源内联共用
+export function isInsideDir(root, candidate) {
   const relativePath = relative(root, candidate);
   return (
     relativePath !== "" &&
@@ -239,7 +240,7 @@ async function resolveMediaFile(
   { missingAsNull = false } = {},
 ) {
   const filePath = resolve(root, mediaPath);
-  if (!isInside(root, filePath)) {
+  if (!isInsideDir(root, filePath)) {
     throw new Error(`theme ${label} escapes the theme directory`);
   }
 
@@ -253,7 +254,7 @@ async function resolveMediaFile(
     }
     throw error;
   }
-  if (!isInside(realRoot, realFilePath)) {
+  if (!isInsideDir(realRoot, realFilePath)) {
     throw new Error(`theme ${label} escapes the theme directory`);
   }
 

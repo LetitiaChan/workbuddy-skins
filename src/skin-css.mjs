@@ -371,12 +371,17 @@ ${buildVariableOverrides(colors)}
   /* 独立层叠上下文：切换淡出层/视频层（z-index:-1，挂 #root 内）才能显示在
      #root 背景之上、页面内容之下；视频主题 VIDEO_LAYER_CSS 里本就有此声明 */
   isolation: isolate !important;
+  /* hero 只内联一次：自定义属性承载 url()，本规则与下方 chat 降噪规则经 var() 复用——
+     hero 普遍数百 KB（base64 再膨胀 4/3），重复一份会让每条主题 CSS 体积近似翻倍，
+     65+ 主题全部内联进菜单脚本时 payload 翻倍。菜单脚本的 heroOf/thumbOf 正则从
+     CSS 文本提取首个 url(data:image...)，本声明即唯一命中点，提取链路不受影响 */
+  --wb-hero: url(${JSON.stringify(heroDataUrl)});
   /* 左遮罩收窄降强度：只托住侧边栏宽度（0→14%），72% 强度，30% 处全透明；
      下遮罩收窄到 85%→100%，强度降到 50%，四周大面积透出壁纸 */
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--wb-surface) 72%, transparent) 0 14%, transparent 30%),
     linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-surface) 50%, transparent) 85% 100%),
-    url(${JSON.stringify(heroDataUrl)}) right center / cover no-repeat fixed !important;
+    var(--wb-hero) right center / cover no-repeat fixed !important;
 }
 
 /* 会话/详情页壁纸降噪：菜单脚本按路由维护 body[data-wb-skin-page]（home=新建任务页、
@@ -389,7 +394,7 @@ body[data-wb-skin-page="chat"] #root {
     linear-gradient(0deg, color-mix(in srgb, var(--wb-surface) 50%, transparent), color-mix(in srgb, var(--wb-surface) 50%, transparent)),
     linear-gradient(90deg, color-mix(in srgb, var(--wb-surface) 72%, transparent) 0 14%, transparent 30%),
     linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-surface) 50%, transparent) 85% 100%),
-    url(${JSON.stringify(heroDataUrl)}) right center / cover no-repeat fixed !important;
+    var(--wb-hero) right center / cover no-repeat fixed !important;
 }
 
 /* 关键：teams-container 是 #root 直接子层，默认有不透明灰底，会完全盖住背景图 */

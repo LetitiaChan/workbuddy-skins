@@ -237,6 +237,40 @@ test("applySkin：视频预置失败只记警告，换新连接后照常注入�
   });
 });
 
+test("applySkin：非选中主题构建条目失败只记警告不进菜单，不阻塞换肤", async () => {
+  await withThemes(async ({ image }) => {
+    const broken = { manifest: { id: "broken", name: "Broken", colors: {} }, heroPath: join(tmpdir(), "wss-no-such-hero.png"), posterPath: null };
+    const { Session } = sessionFactory();
+    const result = await applySkin({
+      loadedTheme: image,
+      themes: [image, broken],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    assert.equal(result.applied, 1);
+    assert.deepEqual(result.menuThemes, ["img"], "坏主题不进菜单");
+    assert.equal(result.videoWarnings.length, 0);
+    assert.equal(result.themeWarnings.length, 1);
+    assert.match(result.themeWarnings[0], /broken/);
+  });
+});
+
+test("applySkin：选中主题构建条目失败时抛原始错误（而非模糊的「不在菜单列表中」）", async () => {
+  await withThemes(async ({ image }) => {
+    const broken = { manifest: { id: "img", name: "Img", colors: {} }, heroPath: join(tmpdir(), "wss-no-such-hero.png"), posterPath: null };
+    const { Session } = sessionFactory();
+    await assert.rejects(
+      applySkin({
+        loadedTheme: broken,
+        themes: [image, broken],
+        port: 9223,
+        deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+      }),
+      /ENOENT/,
+    );
+  });
+});
+
 test("removeSkin：先调菜单 teardown 再移除节点，并发处理所有 target", async () => {
   const { Session, sessions } = sessionFactory();
   const result = await removeSkin({
@@ -248,6 +282,15 @@ test("removeSkin：先调菜单 teardown 再移除节点，并发处理所有 ta
     const expression = session.lastCall();
     assert.ok(expression.indexOf("__workbuddySkinTeardown") < expression.indexOf(".remove()"));
   }
+});
+
+test("removeSkin：单个 target 失败不拖垮整批，removed 只计成功数", async () => {
+  const { Session } = sessionFactory({}, { failUrls: new Set(["ws://127.0.0.1:9223/t1"]) });
+  const result = await removeSkin({
+    port: 9223,
+    deps: { Session, fetchRendererTargets: async () => [target("t1"), target("t2")] },
+  });
+  assert.deepEqual(result, { removed: 1 });
 });
 
 test("applySkin：CSS 主题资源内联为 data URL，菜单分组为 custom", async () => {

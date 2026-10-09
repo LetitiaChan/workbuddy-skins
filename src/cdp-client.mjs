@@ -8,7 +8,7 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 5000;
 const DEFAULT_CONNECT_TIMEOUT_MS = 5000;
 const DEFAULT_DISCOVERY_TIMEOUT_MS = 5000;
 
-function validatePort(port) {
+export function validatePort(port) {
   if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) {
     throw new TypeError(
       `port must be an integer from ${MIN_PORT} through ${MAX_PORT}`,

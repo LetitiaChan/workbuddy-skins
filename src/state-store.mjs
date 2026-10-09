@@ -27,8 +27,9 @@ export async function writeState(patch, { statePath } = {}) {
   const current = (await readState({ statePath: path })) ?? {};
   const next = { ...current, ...patch, schemaVersion: STATE_SCHEMA_VERSION };
   await mkdir(dirname(path), { recursive: true });
-  // 原子写入：先写临时文件再 rename，进程中断也不会留下半个 JSON
-  const tmp = `${path}.tmp-${process.pid}`;
+  // 原子写入：先写临时文件再 rename，进程中断也不会留下半个 JSON。
+  // 随机后缀防同进程并发写撞名（当前 CLI 单发不会触发，兜底未来调用方）
+  const tmp = `${path}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`;
   await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`);
   await rename(tmp, path);
   return next;

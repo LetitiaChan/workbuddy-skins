@@ -1,10 +1,11 @@
 import { readFile, stat } from "node:fs/promises";
-import { extname, isAbsolute, relative, resolve, sep, win32 } from "node:path";
+import { extname, resolve } from "node:path";
 
 import { CdpSession, fetchRendererTargets, waitForRendererTargets } from "./cdp-client.mjs";
 import { BASE64_DECODE_SNIPPET, IDB_OPEN_SNIPPET, VIDEO_DB_LITERALS } from "./renderer-snippets.mjs";
 import { buildMascotCss, buildPaletteCss, buildSkinCss, buildTaglineCss } from "./skin-css.mjs";
 import { buildSkinMenuScript, CSS_SENTINELS, TEARDOWN_GLOBAL, VIDEO_LAYER_CSS } from "./skin-menu.mjs";
+import { isInsideDir } from "./theme-schema.mjs";
 import { probeAnimatedSize } from "./theme-store.mjs";
 
 const STYLE_ID = "workbuddy-skin-style";
@@ -25,16 +26,7 @@ const CSS_ASSET_MIME = { ...MIME, ".svg": "image/svg+xml" };
 
 const errorText = (error) => (error instanceof Error ? error.message : String(error));
 
-// 与 theme-schema 同规则的目录逃逸检查（那边未导出，这里本地一份，逻辑保持一致）
-function isInsideDir(root, candidate) {
-  const relativePath = relative(root, candidate);
-  return (
-    relativePath !== "" &&
-    relativePath !== ".." &&
-    !relativePath.startsWith(`..${sep}`) &&
-    !isAbsolute(relativePath)
-  );
-}
+
 
 // 纯 CSS 主题：把 url("./asset") 相对引用重写为 data URL，使注入渲染进程后自包含。
 // 只处理 ./ 开头的相对路径；data:/http(s):/绝对路径天然不匹配该正则，原样保留。
@@ -105,9 +97,14 @@ async function withSession(Session, target, run) {
   }
 }
 
-// 轻量表达式（状态/暂停/读取/激活）各 target 互不依赖，并发执行；结果顺序与 targets 一致
-function evaluateTargets(targets, expression, Session) {
-  return Promise.all(targets.map((target) => withSession(Session, target, (session) => session.evaluate(expression))));
+// 轻量表达式（状态/暂停/读取/激活）各 target 互不依赖，并发执行；结果顺序与 targets 一致。
+// 单个 target 失败（会话建立时正好导航/连接断开）不拖垮整批：拒绝位记 null，
+// 调用方按语义忽略（status 该位为 null、remove/activate 只计成功数、doctor 聚合跳过空值）
+async function evaluateTargets(targets, expression, Session) {
+  const settled = await Promise.allSettled(
+    targets.map((target) => withSession(Session, target, (session) => session.evaluate(expression))),
+  );
+  return settled.map((outcome) => (outcome.status === "fulfilled" ? outcome.value : null));
 }
 
 async function evaluateOnPort(port, expression, deps) {
@@ -331,26 +328,45 @@ export async function ensureRendererVideos({ targets, Session, entries }) {
   const plan = await prepareVideoSources(entries);
   if (plan.warning) return [plan.warning];
   if (plan.videoEntries.length === 0) return [];
-  const warnings = [];
-  for (const target of targets) {
-    try {
-      await withSession(Session, target, (session) => syncVideosInSession(session, plan));
-    } catch (error) {
-      warnings.push(videoWarning(target, error));
-    }
-  }
-  return warnings;
+  // 各 target 是独立渲染进程，互不依赖，并发预置；单个失败只收集警告（结果序与
+  // targets 一致），不阻塞皮肤注入——菜单端对「视频数据缺失」本就有兜底提示
+  const outcomes = await Promise.all(
+    targets.map(async (target) => {
+      try {
+        await withSession(Session, target, (session) => syncVideosInSession(session, plan));
+        return null;
+      } catch (error) {
+        return videoWarning(target, error);
+      }
+    }),
+  );
+  return outcomes.filter(Boolean);
 }
 
 export async function applySkin({ loadedTheme, themes, port, activeId, deps = {} }) {
   const wait = deps.waitForRendererTargets ?? waitForRendererTargets;
   const { Session } = resolveDeps(deps);
   const menuThemes = themes?.length ? themes : [loadedTheme];
-  // 各主题读图/编码互不依赖，并发；Promise.all 保序，菜单顺序不变
-  const entries = await Promise.all(menuThemes.map(themeEntry));
   // activeId 显式传入时优先（null = 注入后保持清空，由调用方后续激活自定义皮肤）；
   // 但不得指向菜单之外的主题（buildSkinMenuScript 校验）
   const themeId = activeId === undefined ? loadedTheme.manifest.id : activeId;
+  // 各主题读图/编码互不依赖，并发；allSettled 保序，菜单顺序不变。
+  // cli 的 loadTheme allSettled 语义延伸到条目构建：themeEntry 有自己的失败面
+  // （loadTheme 后文件被删/读盘错误/编码失败），坏主题只记警告不进菜单、不阻塞换肤；
+  // 选中主题（themeId）必须成功，失败抛原始错误（比「不在菜单列表中」更可定位）
+  const settledEntries = await Promise.allSettled(menuThemes.map(themeEntry));
+  const entries = [];
+  const themeWarnings = [];
+  for (let index = 0; index < settledEntries.length; index += 1) {
+    const outcome = settledEntries[index];
+    if (outcome.status === "fulfilled") {
+      entries.push(outcome.value);
+      continue;
+    }
+    const failedId = menuThemes[index]?.manifest?.id ?? "unknown";
+    if (failedId === themeId) throw outcome.reason;
+    themeWarnings.push(`主题 ${failedId} 构建条目失败，未进菜单：${errorText(outcome.reason)}`);
+  }
   const expression = buildSkinMenuScript({
     entries,
     activeId: themeId,
@@ -366,32 +382,37 @@ export async function applySkin({ loadedTheme, themes, port, activeId, deps = {}
   });
 
   // 每个 target 一条会话：先预置内置视频 MP4（菜单初始激活视频主题时即可从 IndexedDB 取到），
-  // 再注入菜单。视频失败只记警告；该会话可能已被超时/导航打断，换新连接再注入，保证不阻塞换肤
-  let applied = 0;
-  for (const target of targets) {
-    let session = await openSession(Session, target);
-    try {
-      if (plan.videoEntries.length > 0) {
-        try {
-          await syncVideosInSession(session, plan);
-        } catch (error) {
-          videoWarnings.push(videoWarning(target, error));
-          session.close();
-          session = await openSession(Session, target);
+  // 再注入菜单。视频失败只记警告；该会话可能已被超时/导航打断，换新连接再注入，保证不阻塞换肤。
+  // 各 target 互不依赖（独立渲染进程），并发执行——多窗口时视频分块上传是耗时大头，
+  // 串行会按窗口数成倍拉长 apply。注入是主流程而非增强项：任一 target 注入失败仍整体
+  // 抛错（Promise.all 拒绝时，已发起的会话在各自 finally 中正常关闭）
+  const appliedResults = await Promise.all(
+    targets.map(async (target) => {
+      let session = await openSession(Session, target);
+      try {
+        if (plan.videoEntries.length > 0) {
+          try {
+            await syncVideosInSession(session, plan);
+          } catch (error) {
+            videoWarnings.push(videoWarning(target, error));
+            session.close();
+            session = await openSession(Session, target);
+          }
         }
+        await session.evaluate(expression);
+        return true;
+      } finally {
+        session.close();
       }
-      await session.evaluate(expression);
-      applied += 1;
-    } finally {
-      session.close();
-    }
-  }
+    }),
+  );
   return {
-    applied,
+    applied: appliedResults.length,
     themeId,
     menuThemes: entries.map(({ id }) => id),
     targets: targets.map(({ id }) => id),
     videoWarnings,
+    themeWarnings,
   };
 }
 
@@ -406,7 +427,8 @@ export async function removeSkin({ port, deps = {} }) {
     return true;
   })()`;
   const values = await evaluateOnPort(port, expression, deps);
-  return { removed: values.length };
+  // evaluateTargets 对失败 target 记 null：removed 只计真正拆除成功的窗口
+  return { removed: values.filter(Boolean).length };
 }
 
 // ---- doctor 适配预警：探测 WorkBuddy 大改版 ----

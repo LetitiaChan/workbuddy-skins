@@ -73,12 +73,16 @@ test("左上角字标：硬切渐变双色字标（Work 文本色 / Buddy accent
 
 test("会话/详情页壁纸降噪：chat 页标记时 #root 叠 50% 表面色纱罩，home/无标记不受影响", () => {
   const css = buildSkinCss({ theme: baseTheme, heroDataUrl: HERO });
-  // chat 页规则存在且含纱罩层（首层在最上），hero 仍在底层保留
+  // hero 全 CSS 只内联一次（--wb-hero 声明），普通/chat 规则均经 var() 引用——
+  // hero 普遍数百 KB，重复内联会让每条主题 CSS（65+ 主题合入菜单 payload）体积翻倍
+  assert.equal(css.split(HERO).length - 1, 1, "hero data URL 应只出现一次");
+  assert.ok(css.includes(`--wb-hero: url(${JSON.stringify(HERO)});`));
+  // chat 页规则存在且含纱罩层（首层在最上），hero 经 var(--wb-hero) 在底层保留
   const marker = 'body[data-wb-skin-page="chat"] #root {';
   assert.ok(css.includes(marker));
   const chatBlock = css.slice(css.indexOf(marker), css.indexOf("}", css.indexOf(marker)));
   assert.ok(chatBlock.includes("color-mix(in srgb, var(--wb-surface) 50%, transparent)"));
-  assert.ok(chatBlock.includes("url("), "纱罩下应保留 hero 底图（透出隐约底色）");
+  assert.ok(chatBlock.includes("var(--wb-hero)"), "纱罩下应保留 hero 底图（透出隐约底色）");
   // 全 var() 引用：自定义皮肤哨兵替换后自动适配取色
   assert.ok(!/#[0-9a-f]{3,8}\b/i.test(chatBlock), "纱罩不应硬编码色值");
   // 规则带页面属性限定，默认（home/无标记）不匹配——buildPaletteCss 无壁纸不应携带

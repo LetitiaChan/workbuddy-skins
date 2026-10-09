@@ -1121,6 +1121,9 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     if (poolIndex >= 0) searchPool.splice(poolIndex, 1);
     saveRecent(readRecent().filter((saved) => saved !== id));
     updateSlots();
+    // 已渲染的「最近」小卡同步摘除：其点击闭包持有旧 theme 对象（resolveRecent 的
+    // ?? saved 兜底），不刷新会让已删主题当会话内「诈尸」应用一次
+    renderRecent();
   };
   const ensureCustomRow = (theme) => {
     if (rows.has(theme.id)) return;
@@ -1393,17 +1396,26 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
 
   let scrollBox = null;
   let scrollBoxCachedAt = 0;
+  const preferredScrollBox = () => {
+    const preferred = document.querySelector(".messages-container");
+    return preferred && preferred.scrollHeight > preferred.clientHeight + 20 ? preferred : null;
+  };
   const findScrollBox = () => {
     const now = Date.now();
-    // 缓存有效期内且节点仍在文档中直接复用；断开/过期才重新全量扫描
+    // 缓存有效期内且节点仍在文档中直接复用
     if (scrollBox && scrollBox.isConnected && now - scrollBoxCachedAt < 500) return scrollBox;
-    scrollBoxCachedAt = now;
-    scrollBox = null;
-    const preferred = document.querySelector(".messages-container");
-    if (preferred && preferred.scrollHeight > preferred.clientHeight + 20) {
-      scrollBox = preferred;
+    const preferred = preferredScrollBox();
+    // 过期先做 O(1) 重验证：旧容器仍在文档、仍可滚、且未被更优先的 .messages-container
+    // 取代时直接续期——否则流式输出期间每 500ms 就有一次 querySelectorAll("*") 全文档
+    // 扫描（逐元素 getComputedStyle/布局读取），与合帧减负的初衷相悖
+    if (scrollBox && scrollBox.isConnected && (!preferred || scrollBox === preferred)
+        && scrollBox.scrollHeight > scrollBox.clientHeight + 20) {
+      scrollBoxCachedAt = now;
       return scrollBox;
     }
+    scrollBoxCachedAt = now;
+    scrollBox = preferred;
+    if (scrollBox) return scrollBox;
     let best = null;
     let bestArea = 0;
     const viewportWidth = window.innerWidth || 1200;
