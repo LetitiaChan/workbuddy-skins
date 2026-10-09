@@ -43,6 +43,8 @@
 
 ![动态主题 · 下雪温泉](docs/images/preview-dynamic.gif)
 
+![Sky Clock · 四时天空 · 天色随真实时间流转](docs/images/sky-clock-daycycle.gif)
+
 ![右上角 🎨 菜单 · 主题切换](docs/images/preview-menu.png)
 
 ![深色主题 · 猫鼠夜巡](docs/images/preview-dark.png)
