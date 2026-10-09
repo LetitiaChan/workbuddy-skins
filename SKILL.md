@@ -236,13 +236,23 @@ renderer hint `renderer/index.html`. `npm test` should report all tests passing.
   Shared blocks: variable-override block and component accents are single-sourced for
   image themes (`buildSkinCss`) and pure-color palette themes (`buildPaletteCss` — solid
   surfaces, no hero; the palette theme's own `skin.css` is a decoration layer with the
-  theme's signature gradients, appended after the generated base at apply time).
+  theme's signature gradients, appended after the generated base at apply time). Theme
+  switching is animated: the four `--wb-*` driver variables are `@property`-registered
+  as `<color>` with a 450ms `transition` on body (every derived `--cb-*` and `var()`
+  consumer re-evaluates per frame), and `#root` carries `isolation: isolate` so the
+  menu script's fade-out layer / video layer (`z-index:-1`) can sit above the
+  background and below the content.
 - `src/skin-menu.mjs` — the 🎨 in-app menu (switch / upload / delete / native) + draggable
   menu button (pointer-capture drag, 5px click/drag threshold, position persisted as
   viewport fractions so maximize/resize keeps the relative spot, viewport clamping,
   double-click reset to default) + self-heal
   re-attach observer + right-side nav buttons (top / prev question / next question /
-  bottom, heuristic scroll-box and user-anchor detection, rAF smooth scroll).
+  bottom, heuristic scroll-box and user-anchor detection, rAF smooth scroll). Theme
+  switches crossfade: the old hero image is pinned on a fixed fade layer
+  (`z-index:-1` under `#root`, old blob URLs taken over so they survive the switch)
+  that fades out over 450ms while the new background is already in place underneath;
+  video layers fade in on mount and out on switch; `prefers-reduced-motion` skips all
+  of it.
 - `src/injector.mjs` — idempotent CSS+menu injection and removal (re-inject / pause
   call the menu's `window.__workbuddySkinTeardown` first).
 - `src/state-store.mjs` — apply/pause receipt (`state.json`, atomic write, merge semantics).

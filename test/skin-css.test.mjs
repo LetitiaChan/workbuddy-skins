@@ -152,6 +152,19 @@ test("已发出对话气泡：--cr-user-bubble-bg 钉为文字色洗底（.cr-th
   }
 });
 
+test("主题切换过渡：四色驱动变量 @property 注册为 <color>，body 450ms 变量过渡，图片/配色主题同源", () => {
+  for (const css of [buildSkinCss({ theme: baseTheme, heroDataUrl: HERO }), buildPaletteCss({ theme: baseTheme })]) {
+    // 注册后变量才可插值：切换时 var() 引用处（60+ --cb-* 派生）随插值每帧重算
+    for (const name of ["--wb-accent", "--wb-secondary", "--wb-surface", "--wb-text"]) {
+      assert.ok(css.includes(`@property ${name} { syntax: "<color>"; inherits: true;`), name);
+    }
+    assert.ok(css.includes("transition: --wb-accent .45s ease, --wb-secondary .45s ease, --wb-surface .45s ease, --wb-text .45s ease;"));
+    // 淡出层/视频层（z-index:-1 挂 #root 内）需独立层叠上下文才能盖在 #root 背景之上
+    const rootBlock = css.slice(css.indexOf("#root {"), css.indexOf("}", css.indexOf("#root {")));
+    assert.ok(rootBlock.includes("isolation: isolate !important"), "#root 应 isolation:isolate");
+  }
+});
+
 // ---- buildPaletteCss：配色主题（无图纯配色）换色基座 ----
 
 test("配色主题基座：与图片主题共享同一 --cb-* 变量覆盖块（防模板漂移）", () => {

@@ -461,6 +461,9 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       return;
     }
     try {
+      // crossfade：先提取旧 hero 铺淡出层（接管旧 blob），再替换样式表——
+      // 新背景在 #root 底层立即就位，旧图盖上层 450ms 淡出
+      beginHeroFade(heroOf(style.textContent));
       releaseHeroBlob();
       style.textContent = theme.css;
       document.documentElement.dataset.workbuddySkin = theme.id;
@@ -470,9 +473,9 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       persistActive(theme.id);
       paint(theme.id);
       // 内置视频主题：海报帧 CSS 已就位，按主题 id 从 IndexedDB 取视频挂 <video> 固定层；
-      // 普通图片主题则释放上一个视频层
+      // 普通图片主题则淡出释放上一个视频层
       if (theme.kind === "video") mountVideo(theme);
-      else releaseVideo();
+      else releaseVideo({ fade: true });
       // 伴随 JS 最后执行：CSS 与明暗钉住已就位，DOM 注入直接落在最终样式环境里
       runThemeJs(theme);
     } catch (error) {
@@ -482,8 +485,10 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   const clearTheme = () => {
     try {
       teardownThemeJs();
+      // crossfade：旧 hero 淡出到原生界面（遮罩色快照自当前 --wb-surface）
+      beginHeroFade(heroOf(style.textContent));
       releaseHeroBlob();
-      releaseVideo();
+      releaseVideo({ fade: true });
       style.textContent = "";
       delete document.documentElement.dataset.workbuddySkin;
       // 恢复原生：pin:false 解除模式钉住，把类与属性的所有权还给应用
@@ -500,8 +505,9 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     const id = mode === "dark" ? "native-dark" : "native-light";
     try {
       teardownThemeJs();
+      beginHeroFade(heroOf(style.textContent));
       releaseHeroBlob();
-      releaseVideo();
+      releaseVideo({ fade: true });
       style.textContent = "";
       delete document.documentElement.dataset.workbuddySkin;
       applyMode(mode === "dark" ? "#101418" : "#ffffff");
@@ -713,6 +719,55 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     }
   };
 
+  // ---- 主题切换 crossfade：旧 hero 淡出层 ----
+  // 替换 style.textContent 是硬切：新背景在 #root 底层立即就位，把旧 hero 铺在
+  // z-index:-1 的 fixed 层上（#root 已 isolation:isolate，层显示在背景之上、内容之下）
+  // 盖在上面 opacity 1→0 淡出——old·α + new·(1-α) 与双层 crossfade 数学等价，且只需
+  // 单边动画。配色过渡由皮肤 CSS 的 @property+transition 承担（同为 450ms，同步发生）。
+  // 定制/风景 CSS 主题不经变量基座、#root 无 isolation，淡出层被其背景盖住，优雅降级为硬切
+  const FADE_MS = 450;
+  let fadeLayer = null;
+  let fadeBlobUrl = null;   // 淡出层接管的旧 hero blob（自定义大图），随层吊销
+  const clearFade = () => {
+    fadeLayer?.remove();
+    fadeLayer = null;
+    if (fadeBlobUrl) { URL.revokeObjectURL(fadeBlobUrl); fadeBlobUrl = null; }
+  };
+  // 从当前已应用 CSS 提取 hero（内置 data: / 自定义大图 blob:；须在替换样式表前调用）。
+  // 正则括号/斜杠一律走字符类：模板字面量会吃掉反斜杠转义（同 thumbOf 的坑）
+  const heroOf = (css) => {
+    const match = /url[(]"?((?:data:image[/][a-z+]+;base64,|blob:)[^")]+)"?[)]/i.exec(css ?? "");
+    return match ? match[1] : null;
+  };
+  const reducedMotion = () => {
+    try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
+  };
+  const beginHeroFade = (oldHeroUrl) => {
+    clearFade();
+    // blob 接管：旧自定义大图的 blob: URL 会被随后的 releaseHeroBlob/asCssUrl 立即吊销，
+    // 淡出期间转由本层持有，淡出结束（或被下一次 clearFade）才吊销
+    if (oldHeroUrl && oldHeroUrl === heroBlobUrl) { fadeBlobUrl = heroBlobUrl; heroBlobUrl = null; }
+    if (!oldHeroUrl) return;
+    if (reducedMotion()) { clearFade(); return; }
+    // 遮罩色取当前计算值快照（字面量嵌入）：切原生/原生深色时皮肤变量消失，
+    // var(--wb-surface) 无回退会整句 background 失效，淡出层直接隐形
+    const surface = getComputedStyle(document.body).getPropertyValue("--wb-surface").trim();
+    const veil = (pct) => "color-mix(in srgb, " + surface + " " + pct + "%, transparent)";
+    // 与 #root 英雄图同定位同遮罩；chat 页 50% 纱罩按当前页面标记叠加
+    const chat = document.body.getAttribute("data-wb-skin-page") === "chat";
+    const layer = document.createElement("div");
+    layer.className = "wb-skin-fade-layer";
+    layer.style.cssText = "position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:1;transition:opacity " + FADE_MS + "ms ease;background:"
+      + (surface && chat ? "linear-gradient(0deg, " + veil(50) + ", " + veil(50) + ")," : "")
+      + (surface ? "linear-gradient(90deg, " + veil(72) + " 0 14%, transparent 30%),linear-gradient(180deg, transparent 0 70%, " + veil(50) + " 85% 100%)," : "")
+      + "url(" + JSON.stringify(oldHeroUrl) + ") right center / cover no-repeat fixed;";
+    (document.getElementById("root") ?? document.body).appendChild(layer);
+    fadeLayer = layer;
+    // 双 rAF 提交过渡起点：同帧内 1→0 会被渲染合并成无动画
+    requestAnimationFrame(() => requestAnimationFrame(() => { layer.style.opacity = "0"; }));
+    setTimeout(() => { if (fadeLayer === layer) clearFade(); }, FADE_MS + 80);
+  };
+
   // ---- 视频皮肤（MP4）：CSS 无法播放视频背景，做法是海报帧作 CSS 底图兜底，
   // 另挂 <video> 固定层透出动画；视频体积普遍超 localStorage 配额，
   // 原始文件存 IndexedDB（自定义皮肤元数据仍走 localStorage；内置视频主题由
@@ -721,11 +776,21 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   const MAX_VIDEO_BYTES = ${MAX_THEME_VIDEO_BYTES};
   let videoLayer = null;
   const videoUrlCache = new Map();
-  const releaseVideo = () => {
-    videoLayer?.remove();
+  // fade:true（主题切换路径）时旧视频层 opacity 淡出后再摘除，与 hero 淡出层同步收尾；
+  // 挂载标记立即撤掉（新主题海报帧/底图即时兜底），wrapper 的 .4s transition 已内联
+  const releaseVideo = ({ fade = false } = {}) => {
+    const layer = videoLayer;
     videoLayer = null;
     // 视频层摘除时同步撤掉挂载标记，#root 海报帧兜底恢复（见 VIDEO_LAYER_CSS）
     document.body.removeAttribute("data-wb-skin-video");
+    if (!layer) return;
+    if (fade && !reducedMotion()) {
+      // important：chat 页 VIDEO_LAYER_CSS 的 .35 !important 会压过普通 inline 值
+      layer.style.setProperty("opacity", "0", "important");
+      setTimeout(() => layer.remove(), 460);
+    } else {
+      layer.remove();
+    }
   };
   const VIDEO_STORE = ${VIDEO_DB_LITERALS.store};
   const videoStore = {
@@ -773,9 +838,12 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       if (document.documentElement.dataset.workbuddySkin !== theme.id) return;
       releaseVideo();
       const wrapper = document.createElement("div");
-      // class 供 VIDEO_LAYER_CSS 的 chat 页降噪规则命中；transition 让路由切换时平滑淡出
+      // class 供 VIDEO_LAYER_CSS 的 chat 页降噪规则命中；transition 让路由切换时平滑淡出；
+      // 初始 opacity:0（important 压过 chat 页 .35 规则），挂载后撤掉 inline 交由 CSS 规则
+      // 接管（chat .35 / home 默认 1），transition 平滑淡入到目标值
       wrapper.className = "wb-skin-video-layer";
-      wrapper.style.cssText = "position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;transition:opacity .4s ease;";
+      wrapper.style.cssText = "position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;transition:opacity .4s ease;"
+        + (reducedMotion() ? "" : "opacity:0 !important;");
       const video = document.createElement("video");
       video.autoplay = true; video.muted = true; video.loop = true; video.playsInline = true;
       video.style.cssText = "width:100%;height:100%;object-fit:cover;object-position:right center;display:block;";
@@ -788,6 +856,8 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
         + "linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-surface) 50%, transparent) 85% 100%);";
       wrapper.append(video, overlay);
       (document.getElementById("root") ?? document.body).appendChild(wrapper);
+      // 双 rAF 提交过渡起点后撤掉 inline opacity，CSS 规则接管并淡入（已移除则无视觉效果）
+      requestAnimationFrame(() => requestAnimationFrame(() => { wrapper.style.removeProperty("opacity"); }));
       videoLayer = wrapper;
       // 挂载标记：chat 页据此撤掉海报帧底图，避免半透明视频与静态海报叠出重影
       document.body.setAttribute("data-wb-skin-video", "on");
@@ -869,10 +939,12 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   const applyCustomThemeUnsafe = (theme) => {
     const flat = effectiveColors(theme);
     const isVideo = theme.kind === "video";
+    // crossfade：旧 hero 铺淡出层并接管其 blob（asCssUrl 内的 releaseHeroBlob 不再误吊销）
+    beginHeroFade(heroOf(style.textContent));
     // 视频：海报帧作 CSS 底图（小图，无需 blob），视频异步挂载前/解码失败时兜底；
     // 图片：大图经 asCssUrl 转 blob URL（内部会释放上一张 hero blob）
     if (isVideo) releaseHeroBlob();
-    else releaseVideo();
+    else releaseVideo({ fade: true });
     const heroUrl = isVideo ? theme.poster : asCssUrl(theme.dataUrl);
     style.textContent = buildCustomCss(heroUrl, flat, theme.id) + (isVideo ? VIDEO_LAYER_CSS : "");
     document.documentElement.dataset.workbuddySkin = theme.id;
@@ -1385,6 +1457,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     document.removeEventListener("touchstart", cancelNavAnim, true);
     navRoot.remove();
     teardownThemeJs();
+    clearFade();
     releaseVideo();
     releaseHeroBlob();
     document.body.removeAttribute("data-wb-skin-page");

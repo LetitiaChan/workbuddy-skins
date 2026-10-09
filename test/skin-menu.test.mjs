@@ -268,6 +268,58 @@ test("按钮拖拽：坐标按视口比例（fx/fy）持久化，窗口最大化
   assert.ok(script.includes('window.addEventListener("resize", scheduleReposition)'));
 });
 
+test("切换 crossfade：旧 hero 淡出层接入全部切换路径，blob 接管防误吊销，teardown 清理", () => {
+  const script = build();
+  assert.doesNotThrow(() => new Function(script));
+  // 淡出层机制：450ms（与皮肤 CSS 变量过渡 .45s 同步）、z-index:-1 挂 #root、双 rAF 提交起点
+  assert.ok(script.includes("const FADE_MS = 450;"));
+  assert.ok(script.includes("wb-skin-fade-layer"));
+  assert.ok(script.includes('document.getElementById("root") ?? document.body'));
+  assert.ok(script.includes('requestAnimationFrame(() => requestAnimationFrame(() => { layer.style.opacity = "0"; }))'));
+  // blob 接管：旧自定义大图的 blob: URL 转由淡出层持有，clearFade 时才吊销
+  assert.ok(script.includes("fadeBlobUrl = heroBlobUrl; heroBlobUrl = null;"));
+  // 遮罩色取计算值快照字面量：切原生后 var(--wb-surface) 失效不致整句 background 作废
+  assert.ok(script.includes('getComputedStyle(document.body).getPropertyValue("--wb-surface")'));
+  // 四条切换路径全部接入（提取须在替换样式表之前）
+  assert.ok(/setTheme = \(id\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)[\s\S]*?style\.textContent = theme\.css/.test(script));
+  assert.ok(/clearTheme = \(\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)[\s\S]*?style\.textContent = ""/.test(script));
+  assert.ok(/setNative = \(mode\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)/.test(script));
+  assert.ok(/applyCustomThemeUnsafe = \(theme\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)/.test(script));
+  // teardown 清理淡出层
+  const register = script.indexOf('window["__workbuddySkinTeardown"] = () =>');
+  const body = script.slice(register, script.indexOf("};", register));
+  assert.ok(body.includes("clearFade()"));
+});
+
+test("切换 crossfade：heroOf 在生成脚本中能提取 data: 与 blob: hero（防模板字面量吃转义）", () => {
+  const script = build();
+  // 同 thumbOf 测试的理由：正则写在模板字面量里，\( 会被吃掉导致永远匹配失败
+  const start = script.indexOf("const heroOf = (css) =>");
+  const end = script.indexOf("\n  };", start) + 4;
+  const heroOf = new Function(script.slice(start, end) + "\nreturn heroOf;")();
+  const hero = "data:image/webp;base64,UklGRkJD+/=";
+  const css = buildSkinCss({
+    theme: { id: "t", name: "t", colors: { accent: "#24c9d7", secondary: "#e86fb7", surface: "#f4fbff", text: "#16323a" }, copy: null },
+    heroDataUrl: hero,
+  });
+  assert.equal(heroOf(css), hero);
+  assert.equal(heroOf(`#root{background:url("blob:app://x/abc-123") right center/cover}`), "blob:app://x/abc-123");
+  assert.equal(heroOf(":root{--wb-a:1}"), null);
+});
+
+test("视频层过渡：挂载淡入（important 压过 chat 页 .35 规则后交还 CSS），切走淡出摘除", () => {
+  const script = build();
+  assert.doesNotThrow(() => new Function(script));
+  // 淡入：初始 opacity:0 !important，双 rAF 后移除 inline 让 CSS 规则（chat .35 / home 1）接管
+  assert.ok(script.includes('"opacity:0 !important;"'));
+  assert.ok(script.includes('wrapper.style.removeProperty("opacity")'));
+  // 切走淡出：setProperty important 压过 chat 页规则，460ms 后摘除；teardown/重挂仍直接移除
+  assert.ok(script.includes('layer.style.setProperty("opacity", "0", "important")'));
+  assert.ok(script.includes("releaseVideo({ fade: true })"));
+  // reduced-motion 用户跳过全部过渡
+  assert.ok(script.includes('(prefers-reduced-motion: reduce)'));
+});
+
 test("buildCustomCss：hero（可能数 MB）最后替换，前面的 split 只扫小模板", () => {
   const script = build();
   const start = script.indexOf("const buildCustomCss");

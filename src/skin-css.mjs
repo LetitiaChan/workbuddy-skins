@@ -49,7 +49,18 @@ function haloOutline(size, blur, opacity = 0.35, halo = "var(--wb-halo)") {
 // --cb-* 设计变量覆盖块：WorkBuddy renderer 的全局换色核心（60+ 变量，accent/secondary/
 // surface/text 四色驱动）。配色主题无 hero 底图，同样以此块为换色基座
 function buildVariableOverrides(colors) {
-  return `body[data-application-name=workbuddy] {
+  return `/* 主题切换过渡：四个驱动变量注册为 <color> 类型，body 上 450ms transition——
+   style 替换导致变量计算值变化时四色插值，60+ --cb-* 派生变量（color-mix/var 引用）
+   与所有使用处随插值每帧重算，全页配色平滑过渡（背景图 crossfade 由菜单脚本的
+   淡出层承担，时长一致）。@property 需 Chromium 85+，内嵌 Electron 远超此版本 */
+@property --wb-accent { syntax: "<color>"; inherits: true; initial-value: ${DEFAULT_COLORS.accent}; }
+@property --wb-secondary { syntax: "<color>"; inherits: true; initial-value: ${DEFAULT_COLORS.secondary}; }
+@property --wb-surface { syntax: "<color>"; inherits: true; initial-value: ${DEFAULT_COLORS.surface}; }
+@property --wb-text { syntax: "<color>"; inherits: true; initial-value: ${DEFAULT_COLORS.text}; }
+
+body[data-application-name=workbuddy] {
+  /* 变量过渡（不继承、不影响其他属性）：过渡期间 --wb-halo 等派生变量每帧重算 */
+  transition: --wb-accent .45s ease, --wb-secondary .45s ease, --wb-surface .45s ease, --wb-text .45s ease;
   --wb-accent: ${colors.accent};
   --wb-secondary: ${colors.secondary};
   --wb-surface: ${colors.surface};
@@ -355,6 +366,9 @@ ${buildVariableOverrides(colors)}
 
 #root {
   color: var(--wb-text) !important;
+  /* 独立层叠上下文：切换淡出层/视频层（z-index:-1，挂 #root 内）才能显示在
+     #root 背景之上、页面内容之下；视频主题 VIDEO_LAYER_CSS 里本就有此声明 */
+  isolation: isolate !important;
   /* 左遮罩收窄降强度：只托住侧边栏宽度（0→14%），72% 强度，30% 处全透明；
      下遮罩收窄到 85%→100%，强度降到 50%，四周大面积透出壁纸 */
   background:
@@ -474,6 +488,8 @@ ${buildVariableOverrides(colors)}
 #root {
   background: var(--wb-surface) !important;
   color: var(--wb-text) !important;
+  /* 同图片主题：切换淡出层（z-index:-1）需独立层叠上下文才能盖在根层底色上 */
+  isolation: isolate !important;
 }
 
 .teams-container,
