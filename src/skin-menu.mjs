@@ -65,6 +65,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     legacyKey: "workbuddyCustomTheme",
     activeKey: "workbuddySkinActive",
     posKey: "workbuddySkinMenuPos",
+    recentKey: "workbuddySkinRecent",
     maxCustomSlots: 10,
   });
 
@@ -272,11 +273,19 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   overlay.appendChild(dialog);
 
   const closeDialog = () => { overlay.style.display = "none"; };
-  const openDialog = () => { overlay.style.display = "flex"; };
+  const openDialog = () => {
+    overlay.style.display = "flex";
+    // 打开时刷新「最近」行并按当前搜索词重算显隐，光标直接进搜索框
+    renderRecent();
+    applyFilter();
+    searchInput.focus();
+  };
   overlay.addEventListener("mousedown", (event) => { if (event.target === overlay) closeDialog(); });
   const onEscKey = (event) => {
     if (event.key === "Escape" && overlay.style.display !== "none") {
       event.stopPropagation();
+      // 搜索框有过滤词时 Esc 优先清空搜索（困在过滤态像主题丢了），已空才关弹窗
+      if (searchInput.value) { searchInput.value = ""; applyFilter(); return; }
       closeDialog();
     }
   };
@@ -454,7 +463,8 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       logError("执行主题 JS 失败", theme.id, error);
     }
   };
-  const setTheme = (id) => {
+  // record=false 用于注入时的恢复调用（见文件末尾 init），恢复不算「最近使用」
+  const setTheme = (id, { record = true } = {}) => {
     const theme = data.themes.find((candidate) => candidate.id === id);
     if (!theme) {
       console.warn("WorkBuddy Skin：主题不在菜单列表中，切换已忽略：" + id);
@@ -471,6 +481,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       // modeObserver 空转，明暗写入权完整交给主题 js；切回其他主题时恢复钉住
       applyMode(theme.surface, { pin: !theme.dynamicMode });
       persistActive(theme.id);
+      if (record) pushRecent(theme.id);
       paint(theme.id);
       // 内置视频主题：海报帧 CSS 已就位，按主题 id 从 IndexedDB 取视频挂 <video> 固定层；
       // 普通图片主题则淡出释放上一个视频层
@@ -534,7 +545,23 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   header.style.cssText = "flex:none;display:flex;align-items:center;justify-content:space-between;padding:14px 20px 10px;border-bottom:1px solid color-mix(in srgb, currentColor 10%, transparent);";
   const titleEl = document.createElement("div");
   titleEl.textContent = "\\u9009\\u62e9\\u4e3b\\u9898";
-  titleEl.style.cssText = "font-size:15px;font-weight:700;";
+  titleEl.style.cssText = "font-size:15px;font-weight:700;flex:none;";
+  // 搜索框：id/名称小写子串实时过滤（过滤逻辑在建卡完成后注册，见下方 applyFilter）；
+  // 颜色跟随弹窗主题色（currentColor 系），聚焦时 accent 描边
+  const searchInput = document.createElement("input");
+  searchInput.type = "text";
+  searchInput.placeholder = "\\u641c\\u7d22\\u4e3b\\u9898\\u2026";
+  searchInput.style.cssText = "flex:1;min-width:0;margin:0 10px;padding:5px 10px;border-radius:8px;border:1px solid color-mix(in srgb, currentColor 18%, transparent);background:color-mix(in srgb, currentColor 6%, transparent);color:inherit;font:inherit;outline:none;box-sizing:border-box;";
+  searchInput.addEventListener("focus", () => { searchInput.style.borderColor = "rgba(36,201,215,.7)"; });
+  searchInput.addEventListener("blur", () => { searchInput.style.borderColor = "color-mix(in srgb, currentColor 18%, transparent)"; });
+  // 随机换一张按钮（🎲）：逻辑见 randomPick（建卡完成后定义，点击时早已就位）
+  const randomBtn = document.createElement("span");
+  randomBtn.textContent = "\u{1F3B2}";
+  randomBtn.title = "\\u968f\\u673a\\u6362\\u4e00\\u5f20";
+  randomBtn.style.cssText = "flex:none;width:26px;height:26px;line-height:26px;text-align:center;border-radius:8px;font-size:15px;cursor:pointer;margin-right:6px;";
+  randomBtn.addEventListener("mouseenter", () => { randomBtn.style.background = "color-mix(in srgb, currentColor 8%, transparent)"; });
+  randomBtn.addEventListener("mouseleave", () => { randomBtn.style.background = "transparent"; });
+  randomBtn.addEventListener("click", () => randomPick());
   const closeBtn = document.createElement("span");
   closeBtn.textContent = "\\u00d7";
   closeBtn.title = "\\u5173\\u95ed";
@@ -542,7 +569,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   closeBtn.addEventListener("mouseenter", () => { closeBtn.style.background = "color-mix(in srgb, currentColor 8%, transparent)"; });
   closeBtn.addEventListener("mouseleave", () => { closeBtn.style.background = "transparent"; });
   closeBtn.addEventListener("click", closeDialog);
-  header.append(titleEl, closeBtn);
+  header.append(titleEl, searchInput, randomBtn, closeBtn);
   dialog.append(header, dialogBody);
 
   // 分类小节：标题行（extra 挂槽位计数等附加信息）+ 卡片网格，挂进滚动 body
@@ -612,6 +639,130 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   rows.set("native-light", nativeLight);
   const nativeDark = card("\\u539f\\u751f\\u754c\\u9762 \\u00b7 \\u6df1\\u8272", { swatch: "linear-gradient(135deg,#262b36,#101318)", onPick: () => { setNative("dark"); closeDialog(); }, parent: nativeSection.grid });
   rows.set("native-dark", nativeDark);
+
+  // ---- 搜索 / 随机 / 最近：纯菜单层功能，唯一新增持久化是 recentKey（3 个 id）----
+  // 搜索池从 rows Map + data.themes 反查构建（上方各建卡循环零改动）；自定义卡在
+  // ensureCustomRow/deleteCustom 中增删。原生两卡不入池、不参与过滤（原生是基准，不搜）
+  const searchPool = [];
+  for (const theme of data.themes) {
+    const el = rows.get(theme.id);
+    if (el) searchPool.push({ id: theme.id, key: (theme.id + " " + theme.name).toLowerCase(), el });
+  }
+
+  // 最近使用栈：MRU 在前、去重、封顶 3 个；复用 workbuddy* localStorage 模式（JSON + try/catch）
+  const RECENT_MAX = 3;
+  const readRecent = () => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(data.recentKey) ?? "[]");
+      if (Array.isArray(parsed)) return parsed.filter((id) => typeof id === "string").slice(0, RECENT_MAX);
+    } catch {}
+    return [];
+  };
+  const saveRecent = (list) => { try { localStorage.setItem(data.recentKey, JSON.stringify(list)); } catch {} };
+  const pushRecent = (id) => {
+    saveRecent([id, ...readRecent().filter((saved) => saved !== id)].slice(0, RECENT_MAX));
+  };
+  // id → 展示信息 + 应用方式（内置走 setTheme，自定义走 applyCustomTheme）；已删除的自定义返回 null
+  const resolveRecent = (id) => {
+    const builtin = data.themes.find((theme) => theme.id === id);
+    if (builtin) return { name: builtin.name, thumb: builtin.thumb ?? thumbOf(builtin.css), swatch: swatchOf(builtin), accent: builtin.accent, apply: () => setTheme(id) };
+    const saved = loadCustoms().find((theme) => theme.id === id);
+    if (saved) return { name: saved.name, thumb: saved.kind === "video" ? saved.poster : saved.dataUrl, swatch: "linear-gradient(135deg," + saved.colors.accent + "," + saved.colors.secondary + ")", accent: saved.colors.accent, apply: () => applyCustomTheme(loadCustoms().find((theme) => theme.id === id) ?? saved) };
+    return null;
+  };
+
+  // 「最近」横排小卡行：recent 栈的可见消费者；仅空搜索词时展示（搜索时让位），
+  // 插到 dialogBody 首位（自定义小节之上）。小卡点击 = 应用并关弹窗（与大卡一致）
+  const recentWrap = document.createElement("div");
+  recentWrap.style.cssText = "display:none;margin-top:10px;";
+  const recentHead = document.createElement("div");
+  recentHead.textContent = "\\u6700\\u8fd1";
+  recentHead.style.cssText = "font-size:12px;font-weight:600;color:color-mix(in srgb, currentColor 55%, transparent);padding:2px 2px 6px;";
+  const recentRow = document.createElement("div");
+  recentRow.style.cssText = "display:flex;gap:8px;";
+  recentWrap.append(recentHead, recentRow);
+  dialogBody.insertBefore(recentWrap, dialogBody.firstChild);
+  const renderRecent = () => {
+    const entries = readRecent().map(resolveRecent).filter(Boolean);
+    recentWrap.style.display = !searchInput.value.trim() && entries.length > 0 ? "" : "none";
+    recentRow.textContent = "";
+    for (const entry of entries) {
+      const mini = document.createElement("div");
+      mini.style.cssText = "width:72px;flex:none;cursor:pointer;border-radius:8px;overflow:hidden;border:2px solid transparent;background:color-mix(in srgb, currentColor 5%, transparent);box-sizing:border-box;";
+      const thumbEl = document.createElement("div");
+      thumbEl.style.cssText = "width:100%;aspect-ratio:16/10;background:" + entry.swatch + ";";
+      if (entry.thumb) {
+        const img = document.createElement("img");
+        img.src = entry.thumb;
+        img.alt = "";
+        img.draggable = false;
+        img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+        thumbEl.appendChild(img);
+      }
+      const nameEl = document.createElement("div");
+      nameEl.textContent = entry.name;
+      nameEl.style.cssText = "font-size:11px;line-height:16px;padding:0 4px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      mini.append(thumbEl, nameEl);
+      mini.title = entry.name;
+      mini.addEventListener("click", () => {
+        try { entry.apply(); closeDialog(); } catch (error) { logError("最近主题应用失败", entry.name, error); }
+      });
+      recentRow.appendChild(mini);
+    }
+  };
+
+  // 无匹配空态：网格全空若无一字提示会被误读为 bug
+  const emptyTip = document.createElement("div");
+  emptyTip.textContent = "\\u65e0\\u5339\\u914d\\u7684\\u4e3b\\u9898";
+  emptyTip.style.cssText = "display:none;padding:28px 0 8px;text-align:center;font-size:12px;color:color-mix(in srgb, currentColor 45%, transparent);";
+  dialogBody.appendChild(emptyTip);
+  const sectionWraps = Array.from(dialogBody.children).filter((el) => el !== recentWrap && el !== emptyTip);
+
+  // 实时过滤：仅切 display（不重排 DOM）；空小节整节隐藏；上传卡搜索时让位，
+  // 清空后交还 updateSlots 按槽位恢复；Esc 清空的拦截在 onEscKey
+  const applyFilter = () => {
+    const q = searchInput.value.trim().toLowerCase();
+    let visible = 0;
+    for (const item of searchPool) {
+      const show = !q || item.key.includes(q);
+      item.el.style.display = show ? "" : "none";
+      if (show) visible += 1;
+    }
+    if (q) uploadCard.style.display = "none"; else updateSlots();
+    for (const wrap of sectionWraps) {
+      const grid = wrap.lastElementChild;
+      let any = false;
+      for (const child of grid.children) {
+        if (child.style.display !== "none") { any = true; break; }
+      }
+      wrap.style.display = any ? "" : "none";
+    }
+    emptyTip.style.display = q && visible === 0 ? "" : "none";
+    if (q) recentWrap.style.display = "none";
+    else renderRecent();
+  };
+  searchInput.addEventListener("input", applyFilter);
+
+  // 随机换一张：排除当前主题在内置+自定义全池中均匀随机；不关弹窗（与卡片点击刻意不同），
+  // 清空搜索后滚动定位 + accent 描边 1.2s——没有位置反馈的随机只是抽签
+  const randomPick = () => {
+    const current = document.documentElement.dataset.workbuddySkin ?? null;
+    const candidates = [];
+    for (const theme of data.themes) if (theme.id !== current) candidates.push(theme.id);
+    for (const saved of loadCustoms()) if (saved.id !== current) candidates.push(saved.id);
+    if (candidates.length === 0) return;
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    const info = resolveRecent(pick);
+    if (!info) return;
+    if (searchInput.value) { searchInput.value = ""; applyFilter(); }
+    try { info.apply(); } catch (error) { logError("随机切换主题失败", pick, error); return; }
+    renderRecent();
+    const el = rows.get(pick);
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.style.outline = "2px solid " + info.accent;
+    setTimeout(() => { el.style.outline = ""; }, 1200);
+  };
 
   // ---- 自定义皮肤：本地选图/选视频 -> 压缩 -> 取色 -> 生成 CSS -> 持久化（多槽位） ----
   // updateSlots 同时负责上传卡显隐：uploadCard 是下方才声明的 const，但本函数首次调用
@@ -951,6 +1102,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     applyMode(flat.surface);
     ensureCustomRow(theme);
     persistActive(theme.id);
+    pushRecent(theme.id);
     paint(theme.id);
     if (isVideo) mountVideo(theme);
   };
@@ -964,6 +1116,10 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     videoStore.del(id).catch(() => {});
     rows.get(id)?.remove();
     rows.delete(id);
+    // 同步清出搜索池与最近栈，避免删掉的主题还被搜到/随机到
+    const poolIndex = searchPool.findIndex((item) => item.id === id);
+    if (poolIndex >= 0) searchPool.splice(poolIndex, 1);
+    saveRecent(readRecent().filter((saved) => saved !== id));
     updateSlots();
   };
   const ensureCustomRow = (theme) => {
@@ -1013,6 +1169,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     del.addEventListener("click", (event) => { event.stopPropagation(); deleteCustom(theme.id); });
     preview.appendChild(del);
     rows.set(theme.id, customCard);
+    searchPool.push({ id: theme.id, key: (theme.id + " " + theme.name).toLowerCase(), el: customCard });
     updateSlots();
   };
 
@@ -1491,8 +1648,9 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   reviveObserver.observe(document.body, { childList: true });
   // 仍挂到 window：回退到旧版本注入时，旧脚本据此断开本轮观察者（同 layoutObserver）
   window.__workbuddySkinReviveObserver = reviveObserver;
+  // 注入恢复当前主题不记入「最近使用」（非用户主动切换）
   if (data.activeId === null) clearTheme();
-  else setTheme(data.activeId);
+  else setTheme(data.activeId, { record: false });
 
   // 供脚本化调用与测试：window.__workbuddySkin.importFromDataUrl(dataUrl, name)
   window.__workbuddySkin = {

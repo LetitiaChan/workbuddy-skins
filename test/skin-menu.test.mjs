@@ -281,7 +281,7 @@ test("切换 crossfade：旧 hero 淡出层接入全部切换路径，blob 接�
   // 遮罩色取计算值快照字面量：切原生后 var(--wb-surface) 失效不致整句 background 作废
   assert.ok(script.includes('getComputedStyle(document.body).getPropertyValue("--wb-surface")'));
   // 四条切换路径全部接入（提取须在替换样式表之前）
-  assert.ok(/setTheme = \(id\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)[\s\S]*?style\.textContent = theme\.css/.test(script));
+  assert.ok(/setTheme = \(id, \{ record = true \} = \{\}\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)[\s\S]*?style\.textContent = theme\.css/.test(script));
   assert.ok(/clearTheme = \(\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)[\s\S]*?style\.textContent = ""/.test(script));
   assert.ok(/setNative = \(mode\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)/.test(script));
   assert.ok(/applyCustomThemeUnsafe = \(theme\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)/.test(script));
