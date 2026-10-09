@@ -91,7 +91,13 @@ No official files are touched.
    restores the last 🎨 menu choice when run without arguments, works
    regardless of the system execution policy (`-ExecutionPolicy Bypass` is built
    in), keeps the console window open with the error message on failure, and
-   accepts an optional theme id: `Start.bat mice-cat`.
+   accepts an optional theme id: `Start.bat mice-cat`. Two extra subcommands
+   manage the optional launcher hijack: `Start.bat install` retargets the
+   Start Menu shortcut and logon autostart (HKCU Run) to the silent launcher
+   (`scripts/launch-hidden.vbs` → `apply.ps1`, no window flash, icon reused
+   from WorkBuddy.exe) so plain icon clicks / autostart arrive skinned;
+   `Start.bat uninstall` restores the originals (backups are written on first
+   install). User-level only — the install directory is never touched.
 2. If `apply.ps1` cannot locate `WorkBuddy.exe`, run the locator and follow its
    printed hint (often you just need to launch WorkBuddy once so the path is
    registered):
@@ -249,8 +255,12 @@ renderer hint `renderer/index.html`. `npm test` should report all tests passing.
 - `scripts/apply.command` / `pause.command` — macOS launchers.
 - `Start.bat` (repo root) — Windows double-click entry: forwards to `apply.ps1`
   with an optional theme id, execution-policy-proof (`-ExecutionPolicy Bypass`).
+  `Start.bat install` / `uninstall` wrap `install-launcher.ps1`.
 - `scripts/apply.ps1` / `pause.ps1` / `find-workbuddy.ps1` — Windows launchers
   (shared `Find-WorkBuddyExe` / `Find-Node` live in `scripts/common.ps1`).
+- `scripts/install-launcher.ps1` / `launch-hidden.vbs` — optional hijack of the
+  Start Menu shortcut + HKCU Run autostart to a silent skinned launcher
+  (`-Uninstall` restores the backed-up originals).
 - `themes/` — 65 built-in theme folders (`theme.json` + `hero.webp`; video themes use
   `hero.mp4` + `poster` image, e.g. `misty-fir-rain`, `snow-animals`; CSS themes use a
   `css` field — optional `js` companion script, `order` sort key, and `group` field:

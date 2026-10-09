@@ -115,6 +115,8 @@ node src/cli.mjs apply --theme mice-cat
 - **执行策略零配置**：Start.bat 内部以 `-ExecutionPolicy Bypass` 调起 PowerShell，双击不受系统执行策略限制，无需任何前置设置
 - **结果可见**：成功时窗口自动关闭；失败时窗口停住并显示原因（如找不到 WorkBuddy.exe 或 node），方便排查
 
+**免双击：接管系统启动入口（可选，推荐）**。命令行执行一次 `Start.bat install`，会把开始菜单的 WorkBuddy 图标和开机启动项重定向到静默启动器（`scripts\launch-hidden.vbs` → `apply.ps1`，无窗口闪烁、图标沿用官方图标）——之后点图标 / 开机自启都自动带上皮肤，等价于每次启动前替你双击了 `Start.bat`。只改用户级快捷方式与注册表，不碰安装目录；原入口自动备份，`Start.bat uninstall` 一键还原。若此前把 WorkBuddy 固定到了任务栏，取消固定后从开始菜单重新固定即可；官方升级若还原了入口，重跑一次 `Start.bat install`。（等价命令：安装 `.\scripts\install-launcher.ps1`，还原 `.\scripts\install-launcher.ps1 -Uninstall`）
+
 也可以直接用 PowerShell 运行（Start.bat 内部就是调它，行为完全一致）：
 
 ```powershell
