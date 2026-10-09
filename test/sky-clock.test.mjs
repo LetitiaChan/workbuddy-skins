@@ -67,7 +67,7 @@ test("sky-clock skin.js：激活即写入 --sky-* 变量与场景 SVG，明暗�
     assert.ok(art.startsWith('url("data:image/svg+xml;charset=utf-8,'));
     const svg = decodeURIComponent(art.slice('url("data:image/svg+xml;charset=utf-8,'.length, -2));
     assert.ok(svg.includes('viewBox="0 0 1600 900"'));
-    assert.ok(svg.includes("M0 610 Q320 500")); // 山脊轮廓沿用 aurora
+    assert.ok(svg.includes("M0 600 Q280 520")); // 山脊轮廓参考 sakura.svg 三层山形
     // 明暗写入与 --sky-scheme 一致，类名/属性与菜单 writeMode 同构
     const dark = dom.body.dataset.vscodeThemeKind === "vscode-dark";
     assert.equal(dom.body.style.props.get("--sky-scheme"), dark ? "dark" : "light");
