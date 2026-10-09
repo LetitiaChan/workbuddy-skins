@@ -139,9 +139,15 @@ test("pause：记录 lastPause（removed 数）", async () => {
 });
 
 // ---- doctor：Node 版本检查与状态回执一并输出 ----
+// 探测/仓库检查默认走真实实现（CDP/git），测试一律注入桩保持可重复
+const doctorOverrides = {
+  probeRenderer: async () => ({ reachable: false, reason: "stub" }),
+  repoUpdate: async () => ({ isRepo: false, checked: false }),
+};
+
 test("doctor：包含 node 版本检查结果与 statePath，state 来自状态文件", async () => {
   const state = { lastApply: { ok: true, themeId: "miku-light" } };
-  const report = await runCli(["doctor"], { readStateFile: async () => state });
+  const report = await runCli(["doctor"], { ...doctorOverrides, readStateFile: async () => state });
   assert.equal(report.node.ok, true);
   assert.equal(report.node.version, process.version);
   assert.equal(report.node.required, ">=18");
@@ -150,9 +156,51 @@ test("doctor：包含 node 版本检查结果与 statePath，state 来自状态�
 });
 
 test("doctor：状态文件读取失败时 state 为 null 且不影响报告", async () => {
-  const report = await runCli(["doctor"], { readStateFile: async () => { throw new Error("io"); } });
+  const report = await runCli(["doctor"], { ...doctorOverrides, readStateFile: async () => { throw new Error("io"); } });
   assert.equal(report.state, null);
   assert.equal(typeof report.appFound, "boolean");
+});
+
+test("doctor：兼容探测结果原样进报告（大改版预警透传），--port 透传给探测", async () => {
+  const compat = {
+    reachable: true,
+    targets: 1,
+    ok: false,
+    cbVarCount: 3,
+    missingViewIds: ["sidebar"],
+    warnings: ["WorkBuddy 界面可能已大改版：…"],
+  };
+  const calls = [];
+  const report = await runCli(["doctor", "--port", "9333"], {
+    ...doctorOverrides,
+    probeRenderer: async (args) => { calls.push(args); return compat; },
+  });
+  assert.deepEqual(calls, [{ port: 9333 }]);
+  assert.equal(report.cdpPort, 9333);
+  assert.deepEqual(report.compat, compat);
+});
+
+test("doctor：探测失败降级为 reachable:false，仓库检查失败降级为 checked:false", async () => {
+  const report = await runCli(["doctor"], {
+    probeRenderer: async () => { throw new Error("connect refused"); },
+    repoUpdate: async () => { throw new Error("offline"); },
+    readStateFile: async () => null,
+  });
+  assert.equal(report.compat.reachable, false);
+  assert.match(report.compat.reason, /connect refused/);
+  assert.equal(report.repo.checked, false);
+  assert.match(report.repo.reason, /offline/);
+  assert.equal(report.node.ok, true); // 降级不影响报告其余部分
+});
+
+test("doctor：仓库有更新时 hint 透传进报告", async () => {
+  const report = await runCli(["doctor"], {
+    ...doctorOverrides,
+    repoUpdate: async () => ({ isRepo: true, checked: true, updateAvailable: true, hint: "仓库有新版本，运行 git pull 获取最新适配" }),
+    readStateFile: async () => null,
+  });
+  assert.equal(report.repo.updateAvailable, true);
+  assert.match(report.repo.hint, /git pull/);
 });
 
 test("status：透传 --port 并原样返回 skinStatus 结果", async () => {

@@ -166,7 +166,10 @@ No official files are touched.
 ## Apply receipts
 
 Every apply/pause writes a receipt to `state.json` (time, theme, ok/error);
-`doctor` shows it along with a Node.js version check (requires 18+).
+`doctor` shows it along with a Node.js version check (requires 18+), a live
+compat probe (`compat`: native `--cb-*` variables and `[data-view-id]` anchors
+still present — early warning if a WorkBuddy redesign breaks the skin
+mechanism) and a repo update hint (`repo`: local vs remote git HEAD).
 
 ## Pause / restore to native
 
@@ -211,7 +214,7 @@ install is always left untouched.
 
 ```bash
 npm test                  # unit tests (node:test) — no live WorkBuddy required
-node src/cli.mjs doctor   # platform, app path, CDP port, renderer hint
+node src/cli.mjs doctor   # platform, app path, CDP port, compat probe, repo update
 node src/cli.mjs status   # injection state
 node --check src/cli.mjs  # syntax
 ```

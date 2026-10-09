@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 
 import { DEFAULT_CDP_PORT, DEFAULT_THEME_ID, EXPECTED_BUNDLE_ID, RENDERER_URL_HINT, resolveStudioPaths } from "./constants.mjs";
-import { applySkin, removeSkin, skinStatus, readSavedActiveSkin, activateSavedSkin, activateSavedNative } from "./injector.mjs";
+import { applySkin, removeSkin, skinStatus, readSavedActiveSkin, activateSavedSkin, activateSavedNative, probeRendererCompat } from "./injector.mjs";
 import { readState, writeState } from "./state-store.mjs";
 import { loadTheme } from "./theme-schema.mjs";
 import { createSingleImageTheme, listThemes } from "./theme-store.mjs";
@@ -46,7 +48,43 @@ function defaults(overrides) {
     activateSavedNative,
     readStateFile: readState,
     writeStateFile: writeState,
+    probeRenderer: probeRendererCompat,
+    repoUpdate: repoUpdateInfo,
     ...overrides,
+  };
+}
+
+const exists = (path) => access(path).then(() => true, () => false);
+
+const execFileAsync = promisify(execFile);
+
+async function gitOutput(args, timeoutMs) {
+  const { stdout } = await execFileAsync("git", args, { cwd: sourceRoot, timeout: timeoutMs, windowsHide: true });
+  return stdout.trim();
+}
+
+// 仓库更新提示：对比本地 HEAD 与远端同分支（分支不存在于远端时回落远端默认分支）。
+// 任何一步失败（无 git、非仓库、离线）都向上抛，由 doctor 降级为 checked:false，不影响报告主体
+async function repoUpdateInfo() {
+  if (!(await exists(join(sourceRoot, ".git")))) return { isRepo: false, checked: false };
+  const [head, branch] = await Promise.all([
+    gitOutput(["rev-parse", "HEAD"], 5000),
+    gitOutput(["rev-parse", "--abbrev-ref", "HEAD"], 5000),
+  ]);
+  const ref = branch && branch !== "HEAD" ? `refs/heads/${branch}` : "HEAD";
+  let remote = await gitOutput(["ls-remote", "origin", ref], 8000);
+  if (!remote) remote = await gitOutput(["ls-remote", "origin", "HEAD"], 8000);
+  const remoteSha = remote.split(/\s+/)[0] ?? "";
+  if (!remoteSha) return { isRepo: true, checked: false, reason: "远端无对应分支" };
+  const updateAvailable = remoteSha !== head;
+  return {
+    isRepo: true,
+    checked: true,
+    branch,
+    head: head.slice(0, 8),
+    remote: remoteSha.slice(0, 8),
+    updateAvailable,
+    ...(updateAvailable ? { hint: "仓库有新版本，运行 git pull 获取最新适配" } : {}),
   };
 }
 
@@ -97,8 +135,13 @@ export async function runCli(argv, overrides = {}) {
   }
   if (command === "status") return deps.skinStatus({ port: portFrom(args.port) });
   if (command === "doctor") {
-    const state = await deps.readStateFile().catch(() => null);
-    const exists = async (path) => access(path).then(() => true, () => false);
+    const port = portFrom(args.port);
+    // 三项诊断互不依赖，并发；各自降级（状态损坏/未运行/离线），绝不让 doctor 整体失败
+    const [state, compat, repo] = await Promise.all([
+      deps.readStateFile().catch(() => null),
+      deps.probeRenderer({ port }).catch((error) => ({ reachable: false, reason: error.message })),
+      deps.repoUpdate().catch((error) => ({ checked: false, reason: error.message })),
+    ]);
     if (process.platform === "win32") {
       const candidates = [
         process.env.WORKBUDDY_EXE,
@@ -116,11 +159,13 @@ export async function runCli(argv, overrides = {}) {
         app,
         appFound: !!app,
         candidates,
-        cdpPort: DEFAULT_CDP_PORT,
+        cdpPort: port,
         rendererHint: RENDERER_URL_HINT,
         installRoot: resolveStudioPaths().installRoot,
         statePath: resolveStudioPaths().statePath,
         node: nodeInfo(),
+        compat,
+        repo,
         state,
       };
     }
@@ -131,11 +176,13 @@ export async function runCli(argv, overrides = {}) {
       app,
       appFound: await exists(app),
       bundleId: EXPECTED_BUNDLE_ID,
-      cdpPort: DEFAULT_CDP_PORT,
+      cdpPort: port,
       rendererHint: RENDERER_URL_HINT,
       installRoot: resolveStudioPaths().installRoot,
       statePath: resolveStudioPaths().statePath,
       node: nodeInfo(),
+      compat,
+      repo,
       state,
     };
   }

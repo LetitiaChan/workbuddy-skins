@@ -9,9 +9,11 @@ import {
   activateSavedSkin,
   applySkin,
   ensureRendererVideos,
+  probeRendererCompat,
   readSavedActiveSkin,
   removeSkin,
   skinStatus,
+  summarizeCompatProbes,
   uploadRendererVideo,
 } from "../src/injector.mjs";
 
@@ -701,4 +703,77 @@ test("activateSavedNative：表达式按 mode 钉明暗，activated 只计成功
   const result = await activateSavedNative({ port: 9223, mode: "dark", deps: { fetchRendererTargets: fetchLight, Session } });
   assert.deepEqual(result, { activated: 2 });
   assert.ok(sessions[0].calls[0].includes('api.setNative("dark")'));
+});
+
+// ---- doctor 适配预警：--cb-* 变量与 [data-view-id] 锚点探测 ----
+
+test("probeRendererCompat：多 target 聚合（锚点并集、变量数取最大），齐全时 ok 且无警告", async () => {
+  const { Session } = valueSession(
+    new Map([
+      ["ws://127.0.0.1:9223/a", { appMarker: "workbuddy", cbVarCount: 62, viewIds: ["sidebar", "main-content"] }],
+      ["ws://127.0.0.1:9223/b", { appMarker: "workbuddy", cbVarCount: 60, viewIds: ["detail-panel"] }],
+    ]),
+  );
+  const result = await probeRendererCompat({ port: 9223, deps: { fetchRendererTargets: fetchLight, Session } });
+  assert.equal(result.reachable, true);
+  assert.equal(result.targets, 2);
+  assert.equal(result.ok, true);
+  assert.equal(result.cbVarCount, 62);
+  assert.deepEqual(result.viewIds, ["detail-panel", "main-content", "sidebar"]);
+  assert.deepEqual(result.missingViewIds, []);
+  assert.deepEqual(result.warnings, []);
+});
+
+test("probeRendererCompat：锚点缺失与变量缺失时给出大改版预警", async () => {
+  const { Session } = valueSession(
+    new Map([
+      ["ws://127.0.0.1:9223/a", { appMarker: "workbuddy", cbVarCount: 12, missingCbVars: ["--cb-bg-primary", "--cb-hover-bg"], viewIds: ["sidebar"] }],
+      ["ws://127.0.0.1:9223/b", { appMarker: "workbuddy", cbVarCount: 10, missingCbVars: ["--cb-text-link"], viewIds: [] }],
+    ]),
+  );
+  const result = await probeRendererCompat({ port: 9223, deps: { fetchRendererTargets: fetchLight, Session } });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.missingViewIds, ["main-content", "detail-panel"]);
+  // 缺失变量取命中数最高 target 的名单（12 > 10）
+  assert.deepEqual(result.missingCbVars, ["--cb-bg-primary", "--cb-hover-bg"]);
+  assert.equal(result.cbVarProbed, 14);
+  assert.equal(result.warnings.length, 2);
+  assert.ok(result.warnings.every((text) => text.includes("WorkBuddy 界面可能已大改版")));
+  assert.ok(result.warnings.some((text) => text.includes("--cb-bg-primary")));
+  assert.ok(result.warnings.some((text) => text.includes("main-content")));
+});
+
+test("probeRendererCompat：app 标记缺失时同样预警（变量覆盖块作用域失效）", async () => {
+  const { Session } = valueSession(
+    new Map([["ws://127.0.0.1:9223/a", { appMarker: null, cbVarCount: 60, viewIds: ["sidebar", "main-content", "detail-panel"] }]]),
+  );
+  const result = await probeRendererCompat({ port: 9223, deps: { fetchRendererTargets: async () => [target("a")], Session } });
+  assert.equal(result.ok, false);
+  assert.ok(result.warnings.some((text) => text.includes("data-application-name")));
+});
+
+test("probeRendererCompat：探测表达式先禁用皮肤样式再量测（测的是原生界面），按名单 getPropertyValue", async () => {
+  const { Session, sessions } = valueSession(
+    new Map([["ws://127.0.0.1:9223/a", { appMarker: "workbuddy", cbVarCount: 60, viewIds: ["sidebar", "main-content", "detail-panel"] }]]),
+  );
+  await probeRendererCompat({ port: 9223, deps: { fetchRendererTargets: async () => [target("a")], Session } });
+  const expression = sessions[0].calls[0];
+  assert.ok(expression.includes('getElementById("workbuddy-skin-style")'));
+  assert.ok(expression.includes("style.disabled = true"));
+  assert.ok(expression.includes("style.disabled = false"));
+  assert.ok(expression.includes('getPropertyValue(name)'));
+  assert.ok(expression.includes("--cb-team-member-card-background"));
+});
+
+test("probeRendererCompat：无渲染进程 target 时降级 reachable:false，不抛错", async () => {
+  const result = await probeRendererCompat({ port: 9223, deps: { fetchRendererTargets: async () => [] } });
+  assert.equal(result.reachable, false);
+  assert.match(result.reason, /未发现渲染进程/);
+});
+
+test("summarizeCompatProbes：空结果与缺字段容忍", () => {
+  const summary = summarizeCompatProbes([null, {}]);
+  assert.equal(summary.ok, false);
+  assert.equal(summary.cbVarCount, 0);
+  assert.deepEqual(summary.missingViewIds, ["sidebar", "main-content", "detail-panel"]);
 });

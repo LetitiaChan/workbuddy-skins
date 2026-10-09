@@ -243,7 +243,7 @@ node src/cli.mjs create --image PATH --name NAME   # 从图片创建主题
 node src/cli.mjs apply [--theme ID] [--port 9223]  # 应用主题
 node src/cli.mjs status                            # 查询注入状态
 node src/cli.mjs pause                             # 恢复原生（别名：restore）
-node src/cli.mjs doctor                            # 检查环境（app 路径、端口、Node 版本、上次注入回执）
+node src/cli.mjs doctor                            # 检查环境（app 路径、端口、Node 版本、适配预警、仓库更新、上次注入回执）
 ```
 
 ### 🧰 从素材生成内置主题
@@ -274,14 +274,14 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 单元测试覆盖不依赖真实 WorkBuddy 的核心逻辑（用假 CDP Session / 假 WebSocket 与临时目录替代真实依赖，运行 WorkBuddy 与否都能跑通）：
 
 - `test/theme-schema.test.mjs` — 主题清单校验：`poster` 规则（视频 hero 必填、图片 hero 禁填、必须是主题目录内的图片相对路径）、纯 CSS 主题规则（`css` 字段替代 `hero`、无 hero 时禁带 poster）、`dynamicMode` 规则（布尔、须与 `js` 同配）、`mascot` 规则（可选、任意类型主题可配、须为目录内图片相对路径，文件缺失按未配置处理、超 256KB 拒绝）与 `loadTheme` 的 realpath 逃逸防护（junction / symlink）、目录内合法符号链接、清单 JSON 报错带路径
-- `test/injector.test.mjs` — 视频预置链路：4MB 分块切分与暂存清理、写入字节数校验、`Uint8Array.fromBase64` 快路径 + `atob` 回退 + 主线程让出、按尺寸判重跳过、单个渲染进程失败降级为警告、本地文件缺失降级；CSS 主题资源内联（`url(./asset)` → data URL、逃逸目录/不支持类型拒绝、绝对 URL 保留）；`applySkin` 每个渲染进程只开一条会话（视频预置失败时换新连接继续注入）；`mascot` 图内联为 data URL 并拼接成长伙伴替换规则（未配置 mascot 的条目不输出该规则）；`removeSkin` 先调菜单 teardown
+- `test/injector.test.mjs` — 视频预置链路：4MB 分块切分与暂存清理、写入字节数校验、`Uint8Array.fromBase64` 快路径 + `atob` 回退 + 主线程让出、按尺寸判重跳过、单个渲染进程失败降级为警告、本地文件缺失降级；CSS 主题资源内联（`url(./asset)` → data URL、逃逸目录/不支持类型拒绝、绝对 URL 保留）；`applySkin` 每个渲染进程只开一条会话（视频预置失败时换新连接继续注入）；`mascot` 图内联为 data URL 并拼接成长伙伴替换规则（未配置 mascot 的条目不输出该规则）；`removeSkin` 先调菜单 teardown；`probeRendererCompat` 大改版预警（禁用皮肤样式量测原生界面、`--cb-*` 名单逐个 `getPropertyValue`、多 target 锚点并集/变量命中取最大、缺失即预警、无 target 降级不抛错）
 - `test/skin-menu.test.mjs` — 🎨 菜单注入脚本：生成脚本可被 JS 引擎编译、切换 / 上传 / 恢复原生各路径的异常兜底与错误日志、大图解码快路径、IndexedDB 阻塞与中止处理、重复注入 / 暂停时的 teardown（断观察者、解除明暗钉住、移除全局监听）、`dynamicMode` 主题跳过钉住（明暗写入权交伴随 js）、布局校准按 rAF 合帧、自定义主题列表缓存、自愈重挂（菜单/样式/定位按钮被框架移除后自动重挂，teardown 先断观察者再移除）、右侧定位按钮（四键齐全、容器/锚点启发式与兜底、平滑滚动、滚轮取消动画、显隐合帧、teardown 拆除）、会话/详情页标记（home/chat 探测与路由切换自动更新、teardown 清除）、视频层降噪（chat 页 35% 不透明度）与重影防护（视频挂载标记同步维护、chat+在挂时撤海报帧）
 - `test/skin-css.test.mjs` — 皮肤 CSS 生成：首页主标题 accent→secondary 渐变文字与 4 向 0 模糊 drop-shadow 实心轮廓（轮廓色 `--wb-halo` 随渐变中点 oklch 亮度自适应黑/白，清掉原生 text-shadow 防重影）、`copy.tagline` 渐变标语（未配置时不注入文案）、左上角字标硬切渐变双色且全 `var()` 引用（自定义取色自动适配，不硬编码色值）、已发出对话气泡透化（`.cr-theme` 作用域 `--cr-user-bubble-bg` 16% 文字色洗底，明暗双向自适应）、侧栏一级树行常态透明/悬停洗底、会话/详情页壁纸降噪（chat 页 50% 纱罩、配色主题不输出降噪规则）、详情面板透化（内部组件/Monaco 各背景层透明、md 代码块与表格 40% 浮层、配色主题不回归）、`buildMascotCss` 成长伙伴换图（`content: url()` 整体替换 + `object-fit: contain` 入框 + 隐藏原生悬停 video，未配置返回空串、拒绝外部 URL）
 - `test/theme-store.test.mjs` — 主题列表：多目录同 id 去重（内置优先）、缺 `name` 不再崩、跳过坏清单与 `.tmp-` 残留目录；`create` 名称校验
 - `test/bundled-themes.test.mjs` — 内置主题集成护栏：`themes/` 下每个目录都通过 `loadTheme` 完整校验、主题 id 与目录名一致且不重复、随主题的 `js` 文本可被 JS 引擎编译
 - `test/sky-clock.test.mjs` — Sky Clock 引擎（最小 DOM 桩跑真实 skin.js）：激活即写入 `--sky-*` 变量与重建的场景 SVG data URL（山脊沿用 aurora 轮廓）、明暗与 `--sky-scheme` 一致且类名/属性与菜单 `writeMode` 同构、月相朔望月推算（新月/上弦/满月/下弦照亮比与命名、跨年回卷精度）与月相弧 sweep 四象限规则（蛾眉/盈凸/亏凸/残月界线凸向，错配会把残月画成亏凸月）、白云节奏（正午峰值纯白、晨昏染霞色、夜间不渲染）、teardown 清定时器/监听/全部内联变量且幂等
 - `test/cdp-client.test.mjs` — CDP 会话：默认不 enable 任何域、`enableDomains` 显式开启与参数校验
-- `test/cli.test.mjs` — `apply` 编排：坏主题不进菜单且保序、选中主题失败即报错、恢复上次自定义皮肤、恢复上次原生浅色/深色（按默认主题注入菜单但不应用皮肤，只钉明暗）、记住的主题失效回退默认；状态回执（apply/pause 成败落盘、写失败不阻断）；`doctor` 的 Node 版本检查与状态展示
+- `test/cli.test.mjs` — `apply` 编排：坏主题不进菜单且保序、选中主题失败即报错、恢复上次自定义皮肤、恢复上次原生浅色/深色（按默认主题注入菜单但不应用皮肤，只钉明暗）、记住的主题失效回退默认；状态回执（apply/pause 成败落盘、写失败不阻断）；`doctor` 的 Node 版本检查与状态展示、适配预警透传（`--port` 透传探测）、探测/仓库检查失败降级不影响报告
 - `test/state-store.test.mjs` — 状态回执：读写往返、浅合并、损坏文件回退 null、原子写入
 - `test/make-theme.test.mjs` — 素材生成主题：裁剪焦点、视频合规判定、两遍码率与截段规划、取色/明暗公式与 🎨 菜单一致、README 插行；PATH 有 ffmpeg 时另跑静态图 / 动图 / 视频三条端到端（无 ffmpeg 自动跳过）
 
@@ -369,6 +369,7 @@ npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 - 深色主题已适配 `data-vscode-theme-kind` 自动切换；「原生界面 · 深色」可显式钉住暗色（选择会持久化，重新 apply 自动恢复）
 - 🎨 菜单切肤用的是 apply 时烘焙进菜单脚本的 CSS **快照**：修改 `src/skin-css.mjs` 等源码后必须重新 apply 才会生效，运行中的实例不会因源码变动自动更新
 - 当前版本针对 WorkBuddy 的 `--cb-*` 设计变量系统和 `[data-view-id]` DOM 锚点适配，与 Codex 的 DOM 结构完全不同
+- `doctor` 会在 WorkBuddy 运行时探测这两个根基是否仍在（`compat` 字段）：临时禁用皮肤样式量测原生界面的 14 个代表变量与 3 个关键锚点，任一缺失即输出「界面可能已大改版」预警；同时对比本地与远端 git HEAD 提示仓库更新（`repo` 字段），离线/非 git 目录自动降级
 
 ## 🔬 技术原理
 
