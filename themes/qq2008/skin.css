@@ -1145,3 +1145,25 @@ body.dark ::selection {
 body.dark .wb-home-route__growth-buddy img {
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .52)) brightness(.9);
 }
+
+/* 主题标语（copy.tagline）自带块：取代注入器按 theme.json 自动追加的通用标语块
+   （buildTaglineCss 带 haloOutline 四向 drop-shadow 贴纸式描边）——描边是壁纸主题的
+   可读性兜底，QQ 2008 主区为纯色渐变底，勾边反而显脏，故去除。
+   机制：skin.css 含 .wb-home-header::after 后注入器即跳过自动标语块
+   （injector.mjs 既定逃生门，tdp-pro 同款用法），故本块须自包含，
+   content 与 theme.json copy.tagline 保持一致；仅作用于本主题，其他主题不受影响 */
+.wb-home-header::after {
+  content: "滴滴声响，好友上线" !important;
+  display: block !important;
+  width: fit-content;
+  margin: 10px auto 2px;
+  background: linear-gradient(90deg, var(--wb-accent, #2d83c6), var(--wb-secondary, #8db8d5));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font: 600 15px/1.5 ui-rounded, system-ui;
+  letter-spacing: .3px;
+  text-shadow: none !important;
+  filter: none;
+}
