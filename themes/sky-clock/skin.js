@@ -8,25 +8,25 @@
 
 // ---------- 天空时刻表（参考真实天空色，hour 升序，24:00 回卷到 0:00 帧） ----------
 // ridge 为三层山脊（远→近）：白天为绿色山峦（远雾绿→近墨绿），夜晚沉为深蓝剪影，
-// 晨昏帧取中间色使绿意在 7:5/17:6 前后随光自然淡入淡出；stars/aurora 为该时段强度（0..1）
+// 晨昏帧取中间色使绿意在 7:5/17:6 前后随光自然淡入淡出；stars 为该时段强度（0..1）
 const FRAMES = [
-  { h: 0.0,  top: "#05070F", mid: "#0B1526", bot: "#12233A", ridge: ["#0C1D31", "#081426", "#040B15"], stars: 0.90, aurora: 0.55 },
-  { h: 4.5,  top: "#0B1226", mid: "#18293F", bot: "#274058", ridge: ["#10273B", "#0B1B2C", "#060F1C"], stars: 0.45, aurora: 0.25 },
-  { h: 6.2,  top: "#33417E", mid: "#96689A", bot: "#F08A5C", ridge: ["#24403E", "#1A2E30", "#101E22"], stars: 0.06, aurora: 0.00 },
-  { h: 7.5,  top: "#5B84BC", mid: "#A9C6E4", bot: "#F4CFA6", ridge: ["#5F827E", "#41604F", "#2A4538"], stars: 0.00, aurora: 0.00 },
-  { h: 10.0, top: "#3D7CC2", mid: "#83B4E2", bot: "#DAEDFA", ridge: ["#7FA0A0", "#5A7F66", "#33503E"], stars: 0.00, aurora: 0.00 },
-  { h: 12.5, top: "#2D6CB8", mid: "#79B3E4", bot: "#EAF5FD", ridge: ["#7FA0A3", "#5A7F66", "#33503E"], stars: 0.00, aurora: 0.00 },
-  { h: 15.5, top: "#3A74BA", mid: "#8ABDE5", bot: "#E3F2FB", ridge: ["#7E9C97", "#587B61", "#324C3B"], stars: 0.00, aurora: 0.00 },
-  { h: 17.6, top: "#4B4C92", mid: "#C96B80", bot: "#FF9C5C", ridge: ["#4A4A3E", "#33382F", "#20251F"], stars: 0.04, aurora: 0.00 },
-  { h: 19.0, top: "#262C58", mid: "#41477A", bot: "#71608C", ridge: ["#182A49", "#12203A", "#0A1526"], stars: 0.55, aurora: 0.10 },
-  { h: 20.8, top: "#0A0F24", mid: "#152142", bot: "#1E3354", ridge: ["#0E2138", "#0A1829", "#050C17"], stars: 0.85, aurora: 0.50 },
+  { h: 0.0,  top: "#05070F", mid: "#0B1526", bot: "#12233A", ridge: ["#0C1D31", "#081426", "#040B15"], stars: 0.90 },
+  { h: 4.5,  top: "#0B1226", mid: "#18293F", bot: "#274058", ridge: ["#10273B", "#0B1B2C", "#060F1C"], stars: 0.45 },
+  { h: 6.2,  top: "#33417E", mid: "#96689A", bot: "#F08A5C", ridge: ["#24403E", "#1A2E30", "#101E22"], stars: 0.06 },
+  { h: 7.5,  top: "#5B84BC", mid: "#A9C6E4", bot: "#F4CFA6", ridge: ["#5F827E", "#41604F", "#2A4538"], stars: 0.00 },
+  { h: 10.0, top: "#3D7CC2", mid: "#83B4E2", bot: "#DAEDFA", ridge: ["#7FA0A0", "#5A7F66", "#33503E"], stars: 0.00 },
+  { h: 12.5, top: "#2D6CB8", mid: "#79B3E4", bot: "#EAF5FD", ridge: ["#7FA0A3", "#5A7F66", "#33503E"], stars: 0.00 },
+  { h: 15.5, top: "#3A74BA", mid: "#8ABDE5", bot: "#E3F2FB", ridge: ["#7E9C97", "#587B61", "#324C3B"], stars: 0.00 },
+  { h: 17.6, top: "#4B4C92", mid: "#C96B80", bot: "#FF9C5C", ridge: ["#4A4A3E", "#33382F", "#20251F"], stars: 0.04 },
+  { h: 19.0, top: "#262C58", mid: "#41477A", bot: "#71608C", ridge: ["#182A49", "#12203A", "#0A1526"], stars: 0.55 },
+  { h: 20.8, top: "#0A0F24", mid: "#152142", bot: "#1E3354", ridge: ["#0E2138", "#0A1829", "#050C17"], stars: 0.85 },
 ];
 
-// 山脊轮廓沿用 aurora.svg 的三层山形
+// 山脊轮廓参考 sakura.svg 的三层山形（节奏更平缓，峰位错开）
 const RIDGE_PATHS = [
-  "M0 610 Q320 500 610 620 T1180 585 T1600 550 V900 H0Z",
-  "M0 700 Q310 585 620 710 T1210 660 T1600 630 V900 H0Z",
-  "M0 780 Q280 680 570 770 T1100 745 T1600 720 V900 H0Z",
+  "M0 600 Q280 520 540 610 T1060 590 T1600 540 V900 H0Z",
+  "M0 700 Q330 590 650 710 T1260 655 T1600 640 V900 H0Z",
+  "M0 790 Q280 690 610 785 T1160 750 T1600 730 V900 H0Z",
 ];
 // 星星为四角星芒（✦）：20 单位宽的凹腰十字星路径，按 r 缩放、位置平移
 const SPARKLE_PATH = "M0 -10 Q1.6 -1.6 10 0 Q1.6 1.6 0 10 Q-1.6 1.6 -10 0 Q-1.6 -1.6 0 -10 Z";
@@ -72,7 +72,6 @@ const frameAt = (h) => {
     bot: lerpHex(a.bot, b.bot, t),
     ridge: a.ridge.map((c, k) => lerpHex(c, b.ridge[k], t)),
     stars: lerp(a.stars, b.stars, t),
-    aurora: lerp(a.aurora, b.aurora, t),
   };
 };
 
@@ -170,10 +169,6 @@ const buildSvg = (h, sky, phase) => {
       ).join("") +
       "</g>";
   }
-  if (sky.aurora > 0.02) {
-    parts += '<ellipse cx="980" cy="210" rx="460" ry="210" fill="url(#auroraGlow)" opacity="' +
-      sky.aurora.toFixed(2) + '"/>';
-  }
   if (rosy) {
     // 粉色雾双层：宽雾带压地平线 + 太阳方位的浓芯，画在山脊之后、日盘之前
     parts +=
@@ -236,8 +231,6 @@ const buildSvg = (h, sky, phase) => {
     '<stop offset="1" stop-color="#FF8A4D" stop-opacity="0"/></radialGradient>' +
     '<radialGradient id="moonGlow"><stop stop-color="#C9D6F2" stop-opacity="0.5"/>' +
     '<stop offset="1" stop-color="#C9D6F2" stop-opacity="0"/></radialGradient>' +
-    '<radialGradient id="auroraGlow"><stop stop-color="#BDFFE8" stop-opacity="0.9"/>' +
-    '<stop offset="1" stop-color="#74F2C9" stop-opacity="0"/></radialGradient>' +
     '<radialGradient id="rosyGlow"><stop stop-color="' + (rosy ? rosy.warm : "#FFC9D6") + '" stop-opacity="0.85"/>' +
     '<stop offset="1" stop-color="' + (rosy ? rosy.warm : "#FFC9D6") + '" stop-opacity="0"/></radialGradient></defs>' +
     '<rect width="1600" height="900" fill="url(#sky)"/>' + parts + "</svg>"

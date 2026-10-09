@@ -13,7 +13,7 @@
   <rect width="1600" height="900" fill="url(#sky)"/>
   <circle cx="800" cy="700" r="260" fill="url(#sun-glow)"/>
   <circle cx="800" cy="700" r="120" fill="#ff5e33"/>
-  <path d="M0 610 Q320 500 610 620 T1180 585 T1600 550 V900 H0Z" fill="#27395c"/>
-  <path d="M0 700 Q310 585 620 710 T1210 660 T1600 630 V900 H0Z" fill="#1c2b46"/>
-  <path d="M0 780 Q280 680 570 770 T1100 745 T1600 720 V900 H0Z" fill="#111d31"/>
+  <path d="M0 600 Q280 520 540 610 T1060 590 T1600 540 V900 H0Z" fill="#27395c"/>
+  <path d="M0 700 Q330 590 650 710 T1260 655 T1600 640 V900 H0Z" fill="#1c2b46"/>
+  <path d="M0 790 Q280 690 610 785 T1160 750 T1600 730 V900 H0Z" fill="#111d31"/>
 </svg>
