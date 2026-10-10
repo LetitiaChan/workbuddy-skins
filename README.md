@@ -6,7 +6,7 @@
 
 一张图，一种心情 · 本机 CDP 注入 · 不改官方安装包 · macOS + Windows
 
-![平台](https://img.shields.io/badge/平台-macOS%20%2B%20Windows-blue) ![Node](https://img.shields.io/badge/Node-%E2%89%A5%2018-green) ![注入方式](https://img.shields.io/badge/注入-本机%20CDP-orange) ![许可](https://img.shields.io/badge/许可-MIT-lightgrey)
+[![CI](https://github.com/LetitiaChan/workbuddy-skins/actions/workflows/ci.yml/badge.svg)](https://github.com/LetitiaChan/workbuddy-skins/actions/workflows/ci.yml) ![平台](https://img.shields.io/badge/平台-macOS%20%2B%20Windows-blue) ![Node](https://img.shields.io/badge/Node-%E2%89%A5%2018-green) ![注入方式](https://img.shields.io/badge/注入-本机%20CDP-orange) ![许可](https://img.shields.io/badge/许可-MIT-lightgrey)
 
 </div>
 
@@ -80,7 +80,10 @@
 
 ## 🚀 快速开始
 
-需要已安装 WorkBuddy 桌面端。下载本仓库后：
+需要已安装 WorkBuddy 桌面端。获取本仓库有两种方式：
+
+- **不想装 git**：从 [Releases](https://github.com/LetitiaChan/workbuddy-skins/releases) 下载最新 zip，解压即用（含全部源码与主题）
+- **常规方式**：`git clone` 本仓库（推荐，方便 `git pull` 跟进更新）
 
 ### 🤖 用 AI 一键安装（推荐）
 
@@ -281,6 +284,17 @@ npm run make-theme -- <素材> --id my-theme --name "我的主题" [--tagline �
 node --version   # 需 Node 18+
 npm test         # 运行 test/ 下的单元测试（等价于 node --test）
 ```
+
+CI 与发版：
+
+- **CI**：push 到 main 或提 PR 时自动在 Windows + macOS × Node 20/22 矩阵上跑全部单元测试（见 `.github/workflows/ci.yml`）
+- **发版**：打 `v*` 标签推送后自动打包 zip（源码 + 主题 + 启动脚本）并生成 changelog 发布到 Releases（见 `.github/workflows/release.yml`）：
+
+  ```bash
+  git tag v1.x.x && git push origin v1.x.x
+  ```
+
+- `scripts/debug/` 下是开发期连真实 WorkBuddy 的诊断脚本（读取 CSS 变量 / DOM 状态 / asar 扫描），需 WorkBuddy 以调试模式运行，不在单元测试范围内
 
 单元测试覆盖不依赖真实 WorkBuddy 的核心逻辑（用假 CDP Session / 假 WebSocket 与临时目录替代真实依赖，运行 WorkBuddy 与否都能跑通）：
 
