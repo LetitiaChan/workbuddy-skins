@@ -32,6 +32,23 @@ export async function readLocalReleaseVersion({ versionFile } = {}) {
   }
 }
 
+// 菜单展示用版本号：与「是否 Release 包」无关，任何安装方式都尽量给一个值。
+// release-version.json（zip 打包写入，含 v 前缀）优先；否则回退 package.json（git 检出）。
+export async function readLocalVersion({ sourceRoot } = {}) {
+  if (!sourceRoot) return null;
+  const release = await readLocalReleaseVersion({ versionFile: join(sourceRoot, "release-version.json") });
+  if (release) return release;
+  try {
+    // zip 包内 sourceRoot 指向 src/，package.json 在其上一级；git 检出时 sourceRoot 即仓库根
+    const raw = await readFile(join(sourceRoot, "package.json"), "utf8").catch(() =>
+      readFile(join(sourceRoot, "..", "package.json"), "utf8"));
+    const parsed = JSON.parse(raw.replace(/^﻿/, ""));
+    return typeof parsed?.version === "string" && parsed.version ? parsed.version : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchLatestRelease({ fetchImpl = fetch, timeoutMs = 8000 } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -43,7 +60,15 @@ export async function fetchLatestRelease({ fetchImpl = fetch, timeoutMs = 8000 }
     if (!response.ok) throw new Error(`GitHub API 返回 ${response.status}`);
     const data = await response.json();
     if (typeof data?.tag_name !== "string" || !data.tag_name) throw new Error("响应缺少 tag_name");
-    return { latest: data.tag_name, url: typeof data.html_url === "string" ? data.html_url : `${RELEASES_PAGE}/latest` };
+    // zip 资产直链：update 命令自动下载用；缺失（API 异常/无资产）时 update 回退手动指引
+    const zipAsset = Array.isArray(data.assets)
+      ? data.assets.find((a) => typeof a?.name === "string" && a.name.endsWith(".zip") && typeof a?.browser_download_url === "string")
+      : null;
+    return {
+      latest: data.tag_name,
+      url: typeof data.html_url === "string" ? data.html_url : `${RELEASES_PAGE}/latest`,
+      zipUrl: zipAsset?.browser_download_url ?? null,
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -58,18 +83,21 @@ export async function checkReleaseUpdate({ sourceRoot, readStateFile, writeState
 
   let latest;
   let url;
+  let zipUrl;
   if (cacheFresh) {
     latest = cached.latest;
     url = cached.url ?? `${RELEASES_PAGE}/latest`;
+    zipUrl = typeof cached.zipUrl === "string" ? cached.zipUrl : null;
   } else {
     try {
-      ({ latest, url } = await fetchLatestRelease({ fetchImpl }));
+      ({ latest, url, zipUrl } = await fetchLatestRelease({ fetchImpl }));
       // 缓存写入失败（权限/磁盘）不影响检查结果本身
-      await writeStateFile?.({ releaseCheck: { at: new Date(nowMs).toISOString(), latest, url } }).catch(() => {});
+      await writeStateFile?.({ releaseCheck: { at: new Date(nowMs).toISOString(), latest, url, zipUrl } }).catch(() => {});
     } catch (error) {
       if (!cached?.latest) return { checked: false, channel: "release", currentVersion, reason: error.message };
       latest = cached.latest;
       url = cached.url ?? `${RELEASES_PAGE}/latest`;
+      zipUrl = typeof cached.zipUrl === "string" ? cached.zipUrl : null;
     }
   }
 
@@ -80,6 +108,6 @@ export async function checkReleaseUpdate({ sourceRoot, readStateFile, writeState
     currentVersion,
     latestVersion: latest,
     updateAvailable,
-    ...(updateAvailable ? { url, hint: `发现新版本 ${latest}，前往 Releases 下载：${url}` } : {}),
+    ...(updateAvailable ? { url, zipUrl: zipUrl ?? null, hint: `发现新版本 ${latest}，运行 node src/cli.mjs update 自动更新，或前往 Releases 手动下载：${url}` } : {}),
   };
 }

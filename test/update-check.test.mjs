@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { checkReleaseUpdate, compareVersions, readLocalReleaseVersion } from "../src/update-check.mjs";
+import { checkReleaseUpdate, compareVersions, readLocalReleaseVersion, readLocalVersion } from "../src/update-check.mjs";
 
 // 真实全局 fetch 绝不进测试：所有用例都注入 fetchImpl 桩
-const okFetch = (tag = "v1.1.0", url = "https://github.com/x/releases/tag/v1.1.0") =>
-  async () => ({ ok: true, json: async () => ({ tag_name: tag, html_url: url }) });
+const okFetch = (tag = "v1.1.0", url = "https://github.com/x/releases/tag/v1.1.0", zipUrl = "https://github.com/x/releases/download/v1.1.0/workbuddy-skins-v1.1.0.zip") =>
+  async () => ({
+    ok: true,
+    json: async () => ({
+      tag_name: tag,
+      html_url: url,
+      assets: zipUrl ? [{ name: "workbuddy-skins.zip", browser_download_url: zipUrl }] : [],
+    }),
+  });
 
 async function withTempDir(fn) {
   const dir = await mkdtemp(join(tmpdir(), "wb-update-"));
@@ -34,6 +41,33 @@ test("readLocalReleaseVersion：读取版本文件，容忍 BOM；缺失/损坏�
     await writeFile(file, "not json");
     assert.equal(await readLocalReleaseVersion({ versionFile: file }), null);
     assert.equal(await readLocalReleaseVersion({ versionFile: join(dir, "missing.json") }), null);
+  });
+});
+
+test("readLocalVersion：release-version.json 优先，缺失回退同级 package.json，双缺失返回 null", async () => {
+  await withTempDir(async (dir) => {
+    // 只有 package.json（git 检出：sourceRoot 即仓库根）
+    await writeFile(join(dir, "package.json"), '{"version":"1.1.0"}');
+    assert.equal(await readLocalVersion({ sourceRoot: dir }), "1.1.0");
+    // zip 结构：sourceRoot 指向 src/，package.json 在上一级
+    const src = join(dir, "src");
+    await mkdir(src, { recursive: true });
+    assert.equal(await readLocalVersion({ sourceRoot: src }), "1.1.0");
+    // release-version.json 存在时优先于 package.json
+    await writeFile(join(src, "release-version.json"), '{"version":"v1.2.3"}');
+    assert.equal(await readLocalVersion({ sourceRoot: src }), "v1.2.3");
+  });
+  // 两处都没有 → null（用与任何 package.json 无祖先关系的独立临时目录，避免回退路径误命中）
+  await withTempDir(async (dir) => {
+    const lone = join(dir, "lone");
+    await mkdir(lone, { recursive: true });
+    await writeFile(join(dir, "package.json"), '{"version":"1.1.0"}');
+    // 上一条用例已证明父级可命中，这里把父级也换成无 package.json 的目录
+    const outer = join(dir, "outer");
+    await mkdir(join(outer, "inner"), { recursive: true });
+    await rm(join(dir, "package.json"), { force: true });
+    assert.equal(await readLocalVersion({ sourceRoot: join(outer, "inner") }), null);
+    assert.equal(await readLocalVersion({}), null);
   });
 });
 
@@ -64,8 +98,10 @@ test("checkReleaseUpdate：有新版本时写缓存并返回 hint；无新版本
     assert.equal(result.latestVersion, "v1.2.0");
     assert.equal(result.updateAvailable, true);
     assert.match(result.hint, /v1\.2\.0/);
+    assert.equal(result.zipUrl, "https://github.com/x/releases/download/v1.1.0/workbuddy-skins-v1.1.0.zip");
     assert.equal(writes.length, 1);
     assert.equal(writes[0].releaseCheck.latest, "v1.2.0");
+    assert.equal(writes[0].releaseCheck.zipUrl, "https://github.com/x/releases/download/v1.1.0/workbuddy-skins-v1.1.0.zip");
 
     const same = await checkReleaseUpdate({
       sourceRoot: dir,
@@ -75,6 +111,21 @@ test("checkReleaseUpdate：有新版本时写缓存并返回 hint；无新版本
     });
     assert.equal(same.updateAvailable, false);
     assert.equal(same.hint, undefined);
+  });
+});
+
+test("checkReleaseUpdate：Release 无 zip 资产时 zipUrl 为 null（update 命令据此回退手动指引）", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(join(dir, "release-version.json"), '{"version":"v1.0.0"}');
+    const result = await checkReleaseUpdate({
+      sourceRoot: dir,
+      fetchImpl: okFetch("v2.0.0", undefined, null),
+      readStateFile: async () => null,
+      writeStateFile: async () => {},
+    });
+    assert.equal(result.updateAvailable, true);
+    assert.equal(result.zipUrl, null);
+    assert.match(result.hint, /cli\.mjs update/);
   });
 });
 
@@ -92,6 +143,7 @@ test("checkReleaseUpdate：24h 内缓存新鲜时不发请求，直接按缓存�
     assert.equal(fetched, false);
     assert.equal(result.latestVersion, "v9.9.9");
     assert.equal(result.url, "https://cached");
+    assert.equal(result.zipUrl, null, "旧缓存无 zipUrl 字段时回退 null");
     assert.equal(result.updateAvailable, true);
   });
 });

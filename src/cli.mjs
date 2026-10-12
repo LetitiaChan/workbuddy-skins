@@ -12,6 +12,7 @@ import { readState, writeState } from "./state-store.mjs";
 import { loadTheme } from "./theme-schema.mjs";
 import { createSingleImageTheme, listThemes } from "./theme-store.mjs";
 import { checkReleaseUpdate, readLocalReleaseVersion } from "./update-check.mjs";
+import { performReleaseUpdate } from "./release-update.mjs";
 
 // 更新提示的后台等待上限：GitHub API 国内偶发慢，超时就放弃提示（不阻塞命令退出）。
 // 检查结果已写入 state.json 缓存，提示丢失后下次命令立即可见
@@ -65,6 +66,9 @@ function defaults(overrides) {
   // 在 overrides 展开后定义，让测试替换 state 存取时检查模块同样走桩
   deps.releaseUpdate = overrides.releaseUpdate
     ?? (() => checkReleaseUpdate({ sourceRoot, readStateFile: deps.readStateFile, writeStateFile: deps.writeStateFile }));
+  // 自更新复用同一检查（24h 缓存）： doctor/apply 刚查过时 update 不再发请求
+  deps.releaseSelfUpdate = overrides.releaseSelfUpdate
+    ?? (() => performReleaseUpdate({ sourceRoot, check: deps.releaseUpdate }));
   return deps;
 }
 
@@ -139,8 +143,12 @@ export async function runCli(argv, overrides = {}) {
 
   if (command === "help") {
     return {
-      commands: ["list", "create --image PATH --name NAME", "apply [--theme ID] [--port 9223]", "pause (alias: restore)", "status", "doctor"],
+      commands: ["list", "create --image PATH --name NAME", "apply [--theme ID] [--port 9223]", "pause (alias: restore)", "status", "doctor", "update"],
     };
+  }
+  if (command === "update") {
+    // Release 自更新：仅 zip 安装生效；git clone 由 repoUpdate 提示 git pull
+    return deps.releaseSelfUpdate();
   }
   if (command === "list") return deps.listThemes({ roots });
   if (command === "create") {

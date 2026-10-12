@@ -85,7 +85,7 @@
 - **不想装 git**：从 [Releases](https://github.com/LetitiaChan/workbuddy-skins/releases) 下载最新 zip，解压即用（含全部源码与主题）
 - **常规方式**：`git clone` 本仓库（推荐，方便 `git pull` 跟进更新）
 
-> 🔔 **新版本提醒**：zip 安装会在 `apply` / `status` 命令输出末尾提示新版本，🎨 菜单按钮左上角也会出现橙色圆点（点击直达下载页）；git clone 安装由 `doctor` 的 `repo` 字段提示 `git pull`。检查每 24 小时最多一次，离线时静默降级，不影响换肤。
+> 🔔 **新版本提醒与一键更新**：zip 安装会在 `apply` / `status` 输出末尾提示新版本，🎨 菜单按钮左上角也会出现橙色圆点（点击直达下载页）；此时运行 `node src/cli.mjs update` 即可自动下载新版 zip 并解压到并列的 `workbuddy-skins-<版本>` 目录（旧目录不动、可随时回滚），按提示在新目录重跑一次 `apply` 完成切换。AI 安装的用户直接对 AI 说「更新皮肤工具」即可（SKILL.md 已内置该流程）。git clone 安装由 `doctor` 的 `repo` 字段提示 `git pull`。检查每 24 小时最多一次，离线静默降级，不影响换肤。
 
 ### 🤖 用 AI 一键安装（推荐）
 
@@ -260,6 +260,7 @@ node src/cli.mjs apply [--theme ID] [--port 9223]  # 应用主题
 node src/cli.mjs status                            # 查询注入状态
 node src/cli.mjs pause                             # 恢复原生（别名：restore）
 node src/cli.mjs doctor                            # 检查环境（app 路径、端口、Node 版本、适配预警、仓库更新、上次注入回执）
+node src/cli.mjs update                            # Release 自更新（仅 zip 安装）：下载新版解压到并列目录，旧目录保留可回滚
 ```
 
 ### 🧰 从素材生成内置主题

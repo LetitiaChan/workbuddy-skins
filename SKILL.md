@@ -175,7 +175,44 @@ Every apply/pause writes a receipt to `state.json` (time, theme, ok/error);
 `doctor` shows it along with a Node.js version check (requires 18+), a live
 compat probe (`compat`: native `--cb-*` variables and `[data-view-id]` anchors
 still present — early warning if a WorkBuddy redesign breaks the skin
-mechanism) and a repo update hint (`repo`: local vs remote git HEAD).
+mechanism) and an update hint (`repo`: for release-zip installs this compares the
+bundled `src/release-version.json` against the latest GitHub Release; for git clones
+it compares local vs remote HEAD).
+
+## Update (when the user asks to upgrade this tool, or `doctor` reports `updateAvailable: true`)
+
+Pick the branch by install channel — `doctor`'s `repo.channel` says which:
+`"release"` (zip install, version file present) or git (clone).
+
+**Release zip install** — run the built-in self-updater:
+
+```bash
+node src/cli.mjs update
+```
+
+It downloads the latest release zip, verifies the bundled version matches the tag,
+and unpacks to a sibling `workbuddy-skins-<version>/` directory next to the current
+install — the old directory is never touched, so failure is recoverable by deleting
+the new directory. On success the result prints `dir` (the new install) and
+`nextStep`; finish by applying from the **new** directory so the running WorkBuddy
+picks up the new code:
+
+```bash
+node <dir>/src/cli.mjs apply   # restores the user's last menu choice
+```
+
+Tell the user they can delete the old directory once the new one works. Custom
+skins and menu state live in the app's own storage / global state file, not in the
+install directory — nothing needs manual migration. If `update` reports no zip
+asset (`zipUrl: null`), fall back: open `url` for the user to download manually.
+
+**Git clone** — tell the user to run `git pull` in the repo, then re-apply:
+`node src/cli.mjs apply`.
+
+The in-app 🎨 menu also surfaces release updates: an orange dot on the palette
+button (hover: "发现新版本，点击前往下载") — clicking opens the Releases page.
+When you see that dot or the user mentions it, this Update section is the action
+to take.
 
 ## Pause / restore to native
 
