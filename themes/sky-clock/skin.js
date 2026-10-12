@@ -123,6 +123,18 @@ const CLOUDS = [
 const CLOUD_BLOBS = [
   [0, 15, 68, 18, 0], [0, 0, 58, 26, 1], [-52, 10, 40, 20, 1], [55, 12, 44, 21, 1],
 ];
+// 微动：每簇云缓慢水平漂移（SMIL，背景图内仍生效），周期长、幅度小、速度错开，
+// 近似积云随风缓移；[x 往返幅度, 周期 s, 相位偏移 s]。
+// begin 锁定墙钟相位（-(epoch+dur-offset) % dur）：每分钟重建 SVG 时 SMIL 时间线虽重启，
+// 但相位由当前时间推出，位置在重建前后严格连续，不会出现跳变/闪回。
+const CLOUD_DRIFT = [[36, 75, 0], [-30, 95, -30], [26, 115, -70]];
+const cloudDriftAnim = (i) => {
+  const [amp, dur, phase] = CLOUD_DRIFT[i % CLOUD_DRIFT.length];
+  const begin = -(((Date.now() / 1000 + phase) % dur + dur) % dur);
+  return '<animateTransform attributeName="transform" type="translate" values="0 0; ' + amp +
+    ' 0; 0 0" keyTimes="0; 0.5; 1" calcMode="spline" keySplines="0.42 0 0.58 1; 0.42 0 0.58 1" dur="' +
+    dur + 's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/>';
+};
 const cloudState = (h) => {
   const strength = gauss(h, 12.5, 2.6);
   if (strength < 0.05) return null;
@@ -164,10 +176,19 @@ const buildSvg = (h, sky, phase) => {
   const clouds = cloudState(h);
   let parts = "";
   if (sky.stars > 0.02) {
+    // 每颗星缓慢亮暗呼吸（SMIL）：周期 6–13s、相位错开、幅度各异，近似大气闪烁
     parts += '<g fill="#EAFFF8" opacity="' + sky.stars.toFixed(2) + '">' +
-      STARS.map(([cx, cy, r]) =>
-        '<path d="' + SPARKLE_PATH + '" transform="translate(' + cx + ' ' + cy + ') scale(' + (r * 0.32).toFixed(2) + ')"/>'
-      ).join("") +
+      STARS.map(([cx, cy, r], i) => {
+        const dur = 6 + (i * 1.7) % 7;              // 6.0–12.7s
+        const lo = 0.35 + (i % 3) * 0.12;           // 暗到 0.35/0.47/0.59
+        // begin 锁墙钟相位：每分钟重建 SVG 时亮度连续，无突变
+        const begin = -(((Date.now() / 1000 + i * 2.3) % dur + dur) % dur);
+        return '<path d="' + SPARKLE_PATH + '" transform="translate(' + cx + ' ' + cy +
+          ') scale(' + (r * 0.32).toFixed(2) + ')">' +
+          '<animate attributeName="opacity" values="1; ' + lo.toFixed(2) + '; 1" keyTimes="0; 0.5; 1"' +
+          ' calcMode="spline" keySplines="0.42 0 0.58 1; 0.42 0 0.58 1" dur="' + dur.toFixed(1) +
+          's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/></path>';
+      }).join("") +
       "</g>";
   }
   if (rosy) {
@@ -181,12 +202,13 @@ const buildSvg = (h, sky, phase) => {
   if (clouds) {
     // 白云三簇：底部压暗片先画（体积阴影），主体片后画；位置避开正午太阳
     parts += '<g class="sky-clouds" opacity="' + clouds.strength.toFixed(2) + '">' +
-      CLOUDS.map((c) =>
+      CLOUDS.map((c, ci) =>
+        '<g>' + cloudDriftAnim(ci) +
         CLOUD_BLOBS.map(([dx, dy, rx, ry, top]) =>
           '<ellipse cx="' + (c.x + dx * c.s).toFixed(0) + '" cy="' + (c.y + dy * c.s).toFixed(0) +
           '" rx="' + (rx * c.s).toFixed(0) + '" ry="' + (ry * c.s).toFixed(0) +
           '" fill="' + (top ? clouds.fill : clouds.shade) + '"/>'
-        ).join("")
+        ).join("") + "</g>"
       ).join("") +
       "</g>";
   }
@@ -289,7 +311,8 @@ const tick = () => {
   st.setProperty("--sky-panel", rgba(botRgb.map((v, i) => lerp(v, target[i], mixT)), dark ? 0.82 : 0.8));
   st.setProperty("--sky-border", dark ? "rgba(140,180,230,0.22)" : "rgba(40,90,150,0.16)");
   st.setProperty("--sky-shadow", dark ? "rgba(20,50,110,0.28)" : "rgba(60,110,170,0.18)");
-  st.setProperty("--sky-art-opacity", dark ? "0.32" : "0.18");
+  // 夜间场景（星月/山脊剪影）需要更高存在感才看得清，白天云与太阳弱一些避免喧宾夺主
+  st.setProperty("--sky-art-opacity", dark ? "0.55" : "0.22");
   st.setProperty("--sky-scheme", dark ? "dark" : "light");
   // 实况色调钩子：主题选择弹窗打开时读它刷新背景/选中描边——天色每分钟流转，
   // theme.json 里的静态 surface/accent 只是快照；mid 是当前时刻天空中间色，
