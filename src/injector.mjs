@@ -8,7 +8,7 @@ import { buildMascotCss, buildPaletteCss, buildSkinCss, buildTaglineCss } from "
 import { buildSkinMenuScript, CSS_SENTINELS, TEARDOWN_GLOBAL, VIDEO_LAYER_CSS } from "./skin-menu.mjs";
 import { isInsideDir } from "./theme-schema.mjs";
 import { probeAnimatedSize } from "./theme-store.mjs";
-import { readLocalReleaseVersion } from "./update-check.mjs";
+import { readLocalReleaseVersion, readLocalVersion } from "./update-check.mjs";
 
 const sourceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -374,6 +374,8 @@ export async function applySkin({ loadedTheme, themes, port, activeId, deps = {}
   // zip 安装才有版本文件：把当前版本号注入菜单，客户端自行轮询 GitHub 提示新版本；
   // git clone 为 null，菜单整段不启用
   const currentVersion = await readLocalReleaseVersion({ versionFile: join(sourceRoot, "release-version.json") });
+  // 展示用版本号独立取：git 检出也回退 package.json，保证弹窗始终有版本可显示
+  const displayVersion = await readLocalVersion({ sourceRoot });
   const expression = buildSkinMenuScript({
     entries,
     activeId: themeId,
@@ -381,6 +383,7 @@ export async function applySkin({ loadedTheme, themes, port, activeId, deps = {}
     menuId: MENU_ID,
     cssTemplate: buildCustomCssTemplate(),
     releaseCheck: currentVersion ? { currentVersion } : null,
+    displayVersion,
   });
   const plan = await prepareVideoSources(entries);
   const videoWarnings = plan.warning ? [plan.warning] : [];
