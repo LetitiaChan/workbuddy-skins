@@ -285,10 +285,30 @@ test("切换 crossfade：旧 hero 淡出层接入全部切换路径，blob 接�
   assert.ok(/clearTheme = \(\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)[\s\S]*?style\.textContent = ""/.test(script));
   assert.ok(/setNative = \(mode\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)/.test(script));
   assert.ok(/applyCustomThemeUnsafe = \(theme\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)/.test(script));
+  // 四条切换路径都要先拆上一个主题的伴随 JS：dynamicMode 主题（sky-clock）的 observer
+  // 与定时器滞留会与 applyMode 的钉住写入互相对写，卡死主线程
+  assert.ok(/setTheme = \(id, \{ record = true \} = \{\}\) => \{[\s\S]*?runThemeJs\(theme\)/.test(script));
+  assert.ok(/clearTheme = \(\) => \{[\s\S]*?teardownThemeJs\(\)/.test(script));
+  assert.ok(/setNative = \(mode\) => \{[\s\S]*?teardownThemeJs\(\)/.test(script));
+  assert.ok(/applyCustomThemeUnsafe = \(theme\) => \{[\s\S]*?teardownThemeJs\(\)/.test(script));
   // teardown 清理淡出层
   const register = script.indexOf('window["__workbuddySkinTeardown"] = () =>');
   const body = script.slice(register, script.indexOf("};", register));
   assert.ok(body.includes("clearFade()"));
+});
+
+test("契约检查：applyMode 钉住明暗时若伴随 JS 未拆解，落下开发期告警", () => {
+  const script = build();
+  const start = script.indexOf("const applyMode = (surface, { pin = true } = {}) => {");
+  assert.ok(start >= 0, "applyMode 定义应存在且签名保持 pin 默认 true");
+  const body = script.slice(start, script.indexOf("\n  };", start));
+  // 仅在钉住（pin）且仍有未拆解伴随 JS 时告警：pin:false 的恢复原生路径不钉住、不引发对写
+  assert.ok(/if \(pin && activeJsTeardown !== null\) \{/.test(body), "告警须同时以 pin 与 activeJsTeardown 为条件");
+  assert.ok(body.includes("切换路径未拆解主题伴随 JS"), "告警文案应指出漏调 teardownThemeJs");
+  assert.ok(body.includes("teardownThemeJs()"), "告警应给出修正指引");
+  // 声明必须先于 applyMode：applyMode 读 activeJsTeardown，后置声明构成 TDZ 隐患
+  const decl = script.indexOf("let activeJsTeardown = null;");
+  assert.ok(decl >= 0 && decl < start, "activeJsTeardown 应声明于 applyMode 之前（避免 TDZ）");
 });
 
 test("切换 crossfade：heroOf 在生成脚本中能提取 data: 与 blob: hero（防模板字面量吃转义）", () => {

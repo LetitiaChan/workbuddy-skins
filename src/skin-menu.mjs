@@ -417,7 +417,21 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   const modeObserver = new MutationObserver(() => {
     if (pinnedDark !== null && !modeMatches()) writeMode();
   });
+  // 主题伴随 JS（如 TDP 英雄层 DOM 注入）：约定 js 文本作为函数体执行，
+  // 返回值若是函数则作为拆除回调（切换/暂停/重复注入时调用）。
+  // 页面 CSP 若禁 eval（new Function 抛错）只记警告，CSS 皮肤本体不受影响。
+  // 声明于 applyMode 之前：applyMode 的契约检查要读它（提前声明避免 TDZ 隐患）
+  let activeJsTeardown = null;
   const applyMode = (surface, { pin = true } = {}) => {
+    // 契约检查：钉住明暗会写入 class/data-* 属性，而 dynamicMode 主题（如 sky-clock）
+    // 的伴随 JS 自带 observer 监听同一批属性并自行写模式——两者同时在场即互相对写
+    // 形成死循环，主线程占满、界面卡死。此约束是隐式的（切换路径必须自行先调
+    // teardownThemeJs，漏掉毫无症状），故在此补一道开发期告警：把「静默到用户卡死」
+    // 降级为「开发时即可见」。pin:false 的路径（恢复原生）不钉住、不引发对写，故豁免
+    if (pin && activeJsTeardown !== null) {
+      console.warn("WorkBuddy Skin：切换路径未拆解主题伴随 JS 就钉住明暗，"
+        + "dynamicMode 主题的 observer 可能与本菜单互相写模式导致卡死；请先调用 teardownThemeJs()");
+    }
     modeObserver.disconnect();
     // 弹窗背景/文字色与当前主题一致（恢复原生时回到白色默认）
     dialog.style.background = "color-mix(in srgb, " + surface + " 94%, transparent)";
@@ -442,10 +456,6 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       else localStorage.removeItem(data.activeKey);
     } catch {}
   };
-  // 主题伴随 JS（如 TDP 英雄层 DOM 注入）：约定 js 文本作为函数体执行，
-  // 返回值若是函数则作为拆除回调（切换/暂停/重复注入时调用）。
-  // 页面 CSP 若禁 eval（new Function 抛错）只记警告，CSS 皮肤本体不受影响
-  let activeJsTeardown = null;
   const teardownThemeJs = () => {
     const teardown = activeJsTeardown;
     activeJsTeardown = null;
@@ -1088,6 +1098,10 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     }
   };
   const applyCustomThemeUnsafe = (theme) => {
+    // 先拆上一个主题的伴随 JS：dynamicMode 主题（如 sky-clock）持有自己的 observer
+    // 与 60s 定时器，若滞留在场，其 writeMode 会与下方 applyMode 的钉住写入互相触发，
+    // 形成两个 MutationObserver 无限对写、主线程被占满导致界面卡死
+    teardownThemeJs();
     const flat = effectiveColors(theme);
     const isVideo = theme.kind === "video";
     // crossfade：旧 hero 铺淡出层并接管其 blob（asCssUrl 内的 releaseHeroBlob 不再误吊销）
