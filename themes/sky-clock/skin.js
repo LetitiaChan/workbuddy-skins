@@ -252,7 +252,7 @@ const buildSvg = (h, sky, phase) => {
     '<stop offset="1" stop-color="' + sky.bot + '"/></linearGradient>' +
     '<radialGradient id="sunGlow"><stop stop-color="#FF8A4D" stop-opacity="0.9"/>' +
     '<stop offset="1" stop-color="#FF8A4D" stop-opacity="0"/></radialGradient>' +
-    '<radialGradient id="moonGlow"><stop stop-color="#C9D6F2" stop-opacity="0.5"/>' +
+    '<radialGradient id="moonGlow"><stop stop-color="#C9D6F2" stop-opacity="0.3"/>' +
     '<stop offset="1" stop-color="#C9D6F2" stop-opacity="0"/></radialGradient>' +
     '<radialGradient id="rosyGlow"><stop stop-color="' + (rosy ? rosy.warm : "#FFC9D6") + '" stop-opacity="0.85"/>' +
     '<stop offset="1" stop-color="' + (rosy ? rosy.warm : "#FFC9D6") + '" stop-opacity="0"/></radialGradient></defs>' +
@@ -316,8 +316,9 @@ const tick = () => {
   const dialogRgb = topRgb.map((v, i) => lerp(v, target[i], mixT));
   st.setProperty("--sky-border", dark ? "rgba(140,180,230,0.22)" : "rgba(40,90,150,0.16)");
   st.setProperty("--sky-shadow", dark ? "rgba(20,50,110,0.28)" : "rgba(60,110,170,0.18)");
-  // 夜间场景（星月/山脊剪影）需要更高存在感才看得清，白天云与太阳弱一些避免喧宾夺主
-  st.setProperty("--sky-art-opacity", dark ? "0.55" : "0.22");
+  // 夜间场景（星月/山脊剪影）需要存在感，但整屏浮层压在文字上方，过强会蒙雾发糊——
+  // 收敛到 0.35（白天 0.22），保证星月可见又不糊字
+  st.setProperty("--sky-art-opacity", dark ? "0.35" : "0.22");
   st.setProperty("--sky-scheme", dark ? "dark" : "light");
   // 实况色调钩子：主题选择弹窗打开时读它刷新背景/选中描边——天色每分钟流转，
   // theme.json 里的静态 surface/accent 只是快照；mid 是当前时刻天空中间色，

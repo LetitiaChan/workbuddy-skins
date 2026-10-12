@@ -52,3 +52,24 @@ body [role="dialog"] {
 @media (prefers-reduced-transparency: reduce) {
   body [role="dialog"] { backdrop-filter: none; }
 }
+
+/* 夜间对比度修正：应用原生深色表面是纯灰（#1f1f1f/#292929 系），与夜空蓝调
+   色相脱节且明度贴近天色，卡片/胶囊糊在背景里。深色时段（skin.js 写 body.dark）
+   把表面变量整体换成夜空蓝阶梯——逐级抬亮让浮层从夜空分离，文字次级色同步带蓝；
+   浅色时段保持原生 IDE Light 不动。侧栏变量不钉（原生规则 !important 引用作实底，
+   钉不透明会在磨砂侧栏冒色块）。 */
+body.dark {
+  --cb-bg-primary: #0e1728 !important;
+  --cb-bg-secondary: #182440 !important;
+  --cb-bg-tertiary: #223152 !important;
+  --cb-hover-bg: rgba(160, 190, 235, 0.08) !important;
+  --cb-text-secondary: rgba(226, 236, 252, 0.72) !important;
+  --wb-bg-primary: #101a2e !important;
+  --wb-bg-secondary: #1a2740 !important;
+  --wb-bg-hover: rgba(160, 190, 235, 0.08) !important;
+  --wb-bg-active: rgba(160, 190, 235, 0.16) !important;
+  --wb-text-medium: rgba(226, 236, 252, 0.72) !important;
+  --wb-home-composer-card-bg: #1c2a45 !important;
+  --wb-home-composer-sub-card-bg: #131e33 !important;
+  --wb-quick-actions-fade-bg: #0c1526 !important;
+}
