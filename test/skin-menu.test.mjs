@@ -280,17 +280,30 @@ test("切换 crossfade：旧 hero 淡出层接入全部切换路径，blob 接�
   assert.ok(script.includes("fadeBlobUrl = heroBlobUrl; heroBlobUrl = null;"));
   // 遮罩色取计算值快照字面量：切原生后 var(--wb-surface) 失效不致整句 background 作废
   assert.ok(script.includes('getComputedStyle(document.body).getPropertyValue("--wb-surface")'));
-  // 四条切换路径全部接入（提取须在替换样式表之前）
-  assert.ok(/setTheme = \(id, \{ record = true \} = \{\}\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)[\s\S]*?style\.textContent = theme\.css/.test(script));
-  assert.ok(/clearTheme = \(\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)[\s\S]*?style\.textContent = ""/.test(script));
-  assert.ok(/setNative = \(mode\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)/.test(script));
-  assert.ok(/applyCustomThemeUnsafe = \(theme\) => \{[\s\S]*?beginHeroFade\(heroOf\(style\.textContent\)\)/.test(script));
-  // 四条切换路径都要先拆上一个主题的伴随 JS：dynamicMode 主题（sky-clock）的 observer
-  // 与定时器滞留会与 applyMode 的钉住写入互相对写，卡死主线程
-  assert.ok(/setTheme = \(id, \{ record = true \} = \{\}\) => \{[\s\S]*?runThemeJs\(theme\)/.test(script));
-  assert.ok(/clearTheme = \(\) => \{[\s\S]*?teardownThemeJs\(\)/.test(script));
-  assert.ok(/setNative = \(mode\) => \{[\s\S]*?teardownThemeJs\(\)/.test(script));
-  assert.ok(/applyCustomThemeUnsafe = \(theme\) => \{[\s\S]*?teardownThemeJs\(\)/.test(script));
+  // 切换前导序列已收口到 applySkinSwap 唯一必经点：teardown 优先于淡出层与样式替换，
+  // 淡出层提取（读旧样式表）优先于替换，故 dynamicMode 主题的 observer 不在场
+  const swapStart = script.indexOf("const applySkinSwap = ");
+  assert.ok(swapStart >= 0, "applySkinSwap 应存在");
+  const swap = script.slice(swapStart, script.indexOf("\n  };", swapStart));
+  const atTeardown = swap.indexOf("teardownThemeJs()");
+  const atFade = swap.indexOf("beginHeroFade(heroOf(style.textContent))");
+  const atCss = swap.indexOf("style.textContent =");
+  const atMode = swap.indexOf("applyMode(surface, { pin })");
+  assert.ok(atTeardown >= 0 && atFade > atTeardown, "teardown 须先于淡出层提取（旧伴随 JS 先离场）");
+  assert.ok(atCss > atFade, "淡出层须先于样式替换（hero 提取自旧样式表）");
+  assert.ok(atMode > atCss, "明暗钉住须在样式落位之后");
+  // 四条切换路径全部经此收口，且不再各自手写 teardown/前导序列
+  for (const path of ["setTheme = (id, { record = true } = {}) =>", "clearTheme = () =>",
+    "setNative = (mode) =>", "applyCustomThemeUnsafe = (theme) =>"]) {
+    const start = script.indexOf("const " + path);
+    assert.ok(start >= 0, `应存在 ${path}`);
+    const body = script.slice(start, script.indexOf("\n  };", start));
+    assert.ok(body.includes("applySkinSwap("), `${path} 应经 applySkinSwap 收口`);
+    assert.ok(!body.includes("teardownThemeJs()"), `${path} 不应再手写 teardownThemeJs`);
+    assert.ok(!body.includes("style.textContent ="), `${path} 不应再手写样式替换`);
+  }
+  // setTheme 的伴随 JS 仍在 swap 之后执行（明暗已落位，DOM 注入落在最终样式环境）
+  assert.ok(/runThemeJs\(theme\)/.test(script));
   // teardown 清理淡出层
   const register = script.indexOf('window["__workbuddySkinTeardown"] = () =>');
   const body = script.slice(register, script.indexOf("};", register));
@@ -309,6 +322,12 @@ test("契约检查：applyMode 钉住明暗时若伴随 JS 未拆解，落下开
   // 声明必须先于 applyMode：applyMode 读 activeJsTeardown，后置声明构成 TDZ 隐患
   const decl = script.indexOf("let activeJsTeardown = null;");
   assert.ok(decl >= 0 && decl < start, "activeJsTeardown 应声明于 applyMode 之前（避免 TDZ）");
+  // 收口后本告警成冗余（applySkinSwap 必然先拆再钉），保留为纵深防御：
+  // 该不变式由收口函数保证，断言其 teardown 先于 applyMode 才算真正闭环
+  const swapStart = script.indexOf("const applySkinSwap = ");
+  const swap = script.slice(swapStart, script.indexOf("\n  };", swapStart));
+  assert.ok(swap.indexOf("teardownThemeJs()") < swap.indexOf("applyMode(surface, { pin })"),
+    "applySkinSwap 须先 teardown 再 applyMode，否则守卫生效即为缺陷复现");
 });
 
 test("切换 crossfade：heroOf 在生成脚本中能提取 data: 与 blob: hero（防模板字面量吃转义）", () => {
@@ -391,8 +410,9 @@ test("dynamicMode 主题：明暗不钉住，写入权交给伴随 js", () => {
   assert.doesNotThrow(() => new Function(script));
   // 标志位进入 payload
   assert.ok(script.includes('"dynamicMode":true'));
-  // setTheme 对 dynamicMode 主题跳过钉住（pinnedDark 保持 null，modeObserver 空转）
-  assert.ok(script.includes("applyMode(theme.surface, { pin: !theme.dynamicMode })"));
+  // setTheme 对 dynamicMode 主题跳过钉住（pinnedDark 保持 null，modeObserver 空转）：
+  // 收口后该语义表达为 applySkinSwap 的 pin 参数，断言 pin 由 !dynamicMode 推导
+  assert.ok(/applySkinSwap\(\{[\s\S]*?pin: !theme\.dynamicMode/.test(script));
   // 普通条目归一为 false，钉住行为不变
   const plain = buildSkinMenuScript({
     entries: [{ id: "plain", name: "Plain", css: "body{}" }], activeId: null, styleId: "s", menuId: "m",
@@ -406,10 +426,11 @@ test("原生主题组：拆分为浅色/深色两行，分别钉住明暗并持�
   // 两行（模板内汉字走双反斜杠转义，生成脚本中为单反斜杠  转义字面量）
   assert.ok(script.includes(String.raw`card("\u539f\u751f\u754c\u9762 \u00b7 \u6d45\u8272"`));
   assert.ok(script.includes(String.raw`card("\u539f\u751f\u754c\u9762 \u00b7 \u6df1\u8272"`));
-  // setNative：清空皮肤但钉住目标明暗（区别于 clearTheme 的 pin:false 交还应用）
+  // setNative：清空皮肤但钉住目标明暗（区别于 clearTheme 的 pin:false 交还应用）。
+  // 收口后经 applySkinSwap 表达：css 为空串（清空皮肤），surface 按模式取深/浅
   assert.ok(script.includes('const setNative = (mode) => {'));
   assert.ok(script.includes('"native-dark" : "native-light"'));
-  assert.ok(script.includes('applyMode(mode === "dark" ? "#101418" : "#ffffff")'));
+  assert.ok(/setNative[\s\S]*?applySkinSwap\(\{[\s\S]*?surface: mode === "dark" \? "#101418" : "#ffffff"/.test(script));
   assert.ok(script.includes('api.setNative') || script.includes('setNative,'));
   // 行键入 rows Map，paint 可高亮
   assert.ok(script.includes('rows.set("native-light"'));

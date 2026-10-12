@@ -428,6 +428,9 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     // 形成死循环，主线程占满、界面卡死。此约束是隐式的（切换路径必须自行先调
     // teardownThemeJs，漏掉毫无症状），故在此补一道开发期告警：把「静默到用户卡死」
     // 降级为「开发时即可见」。pin:false 的路径（恢复原生）不钉住、不引发对写，故豁免
+    //
+    // 收口后本告警即成冗余（applySkinSwap 是唯一必经点，必然先拆再钉），保留作
+    // 纵深防御：applyMode 仍可被非切换场合直接调用，届时漏拆会当场被叫出来
     if (pin && activeJsTeardown !== null) {
       console.warn("WorkBuddy Skin：切换路径未拆解主题伴随 JS 就钉住明暗，"
         + "dynamicMode 主题的 observer 可能与本菜单互相写模式导致卡死；请先调用 teardownThemeJs()");
@@ -473,6 +476,33 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       logError("执行主题 JS 失败", theme.id, error);
     }
   };
+  // ---------- 皮肤切换唯一必经点 ----------
+  // 四条切换路径（setTheme/clearTheme/setNative/applyCustomTheme）此前各自手写同一段
+  // 前导序列，其中 teardownThemeJs 的缺失曾导致 dynamicMode 主题的 observer 与
+  // applyMode 的钉住写入互相对写卡死——该耦合已由本函数收口：teardown 是物理必经点，
+  // 不再依赖「记得调」。
+  //
+  // 顺序约束（不可调换）：
+  //   1) teardownThemeJs 先于 beginHeroFade/applyMode——旧伴随 JS 必须在新 CSS 与
+  //      新明暗落位前离场，否则其 observer 会在写入瞬间被触发
+  //   2) beginHeroFade 先于 style.textContent 替换——hero 提取自旧样式表，替换后无从取
+  //   3) applyMode 先于 runThemeJs（调用方）——伴随 JS 要在最终样式环境里执行
+  // css：字符串，或返回字符串的函数（自定义主题的 CSS 需在旧资源清理后现算，见其调用点）
+  // onBefore：样式表落位前需处理的旧资源（releaseHeroBlob / releaseVideo 的时序各路径
+  //   不同：setTheme 的 releaseVideo 刻意推迟到 mountVideo 决策处，见其调用点注释）
+  // onApplied：样式落位后的差异化收尾（pushRecent / ensureCustomRow / mountVideo）
+  const applySkinSwap = ({ css, surface, pin = true, id = null, onBefore, onApplied }) => {
+    teardownThemeJs();
+    beginHeroFade(heroOf(style.textContent));
+    onBefore?.();
+    style.textContent = typeof css === "function" ? css() : css;
+    if (id) document.documentElement.dataset.workbuddySkin = id;
+    else delete document.documentElement.dataset.workbuddySkin;
+    applyMode(surface, { pin });
+    persistActive(id);
+    paint(id);
+    onApplied?.();
+  };
   // record=false 用于注入时的恢复调用（见文件末尾 init），恢复不算「最近使用」
   const setTheme = (id, { record = true } = {}) => {
     const theme = data.themes.find((candidate) => candidate.id === id);
@@ -481,41 +511,38 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       return;
     }
     try {
-      // crossfade：先提取旧 hero 铺淡出层（接管旧 blob），再替换样式表——
-      // 新背景在 #root 底层立即就位，旧图盖上层 450ms 淡出
-      beginHeroFade(heroOf(style.textContent));
-      releaseHeroBlob();
-      style.textContent = theme.css;
-      document.documentElement.dataset.workbuddySkin = theme.id;
-      // dynamicMode 主题（如按时间变色的 sky-clock）跳过钉住——pinnedDark 保持 null，
-      // modeObserver 空转，明暗写入权完整交给主题 js；切回其他主题时恢复钉住
-      applyMode(theme.surface, { pin: !theme.dynamicMode });
-      persistActive(theme.id);
-      if (record) pushRecent(theme.id);
-      paint(theme.id);
-      // 内置视频主题：海报帧 CSS 已就位，按主题 id 从 IndexedDB 取视频挂 <video> 固定层；
-      // 普通图片主题则淡出释放上一个视频层
-      if (theme.kind === "video") mountVideo(theme);
-      else releaseVideo({ fade: true });
-      // 伴随 JS 最后执行：CSS 与明暗钉住已就位，DOM 注入直接落在最终样式环境里
-      runThemeJs(theme);
+      applySkinSwap({
+        css: theme.css,
+        surface: theme.surface,
+        // dynamicMode 主题（如按时间变色的 sky-clock）跳过钉住——pinnedDark 保持 null，
+        // modeObserver 空转，明暗写入权完整交给主题 js；切回其他主题时恢复钉住
+        pin: !theme.dynamicMode,
+        id: theme.id,
+        onBefore: () => releaseHeroBlob(),
+        onApplied: () => {
+          if (record) pushRecent(theme.id);
+          // 内置视频主题：海报帧 CSS 已就位，按主题 id 从 IndexedDB 取视频挂 <video> 固定层；
+          // 普通图片主题则淡出释放上一个视频层
+          if (theme.kind === "video") mountVideo(theme);
+          else releaseVideo({ fade: true });
+          // 伴随 JS 最后执行：CSS 与明暗钉住已就位，DOM 注入直接落在最终样式环境里
+          runThemeJs(theme);
+        },
+      });
     } catch (error) {
       logError("切换主题失败", id, error);
     }
   };
   const clearTheme = () => {
     try {
-      teardownThemeJs();
-      // crossfade：旧 hero 淡出到原生界面（遮罩色快照自当前 --wb-surface）
-      beginHeroFade(heroOf(style.textContent));
-      releaseHeroBlob();
-      releaseVideo({ fade: true });
-      style.textContent = "";
-      delete document.documentElement.dataset.workbuddySkin;
-      // 恢复原生：pin:false 解除模式钉住，把类与属性的所有权还给应用
-      applyMode("#ffffff", { pin: false });
-      persistActive(null);
-      paint(null);
+      // css 为空串即「清空皮肤回原生」；pin:false 解除模式钉住，把类与属性所有权还给应用
+      applySkinSwap({
+        css: "",
+        surface: "#ffffff",
+        pin: false,
+        id: null,
+        onBefore: () => { releaseHeroBlob(); releaseVideo({ fade: true }); },
+      });
     } catch (error) {
       logError("恢复原生界面失败", null, error);
     }
@@ -525,15 +552,12 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   const setNative = (mode) => {
     const id = mode === "dark" ? "native-dark" : "native-light";
     try {
-      teardownThemeJs();
-      beginHeroFade(heroOf(style.textContent));
-      releaseHeroBlob();
-      releaseVideo({ fade: true });
-      style.textContent = "";
-      delete document.documentElement.dataset.workbuddySkin;
-      applyMode(mode === "dark" ? "#101418" : "#ffffff");
-      persistActive(id);
-      paint(id);
+      applySkinSwap({
+        css: "",
+        surface: mode === "dark" ? "#101418" : "#ffffff",
+        id,
+        onBefore: () => { releaseHeroBlob(); releaseVideo({ fade: true }); },
+      });
     } catch (error) {
       logError("切换原生界面失败", id, error);
     }
@@ -1098,27 +1122,30 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     }
   };
   const applyCustomThemeUnsafe = (theme) => {
-    // 先拆上一个主题的伴随 JS：dynamicMode 主题（如 sky-clock）持有自己的 observer
-    // 与 60s 定时器，若滞留在场，其 writeMode 会与下方 applyMode 的钉住写入互相触发，
-    // 形成两个 MutationObserver 无限对写、主线程被占满导致界面卡死
-    teardownThemeJs();
     const flat = effectiveColors(theme);
     const isVideo = theme.kind === "video";
     // crossfade：旧 hero 铺淡出层并接管其 blob（asCssUrl 内的 releaseHeroBlob 不再误吊销）
-    beginHeroFade(heroOf(style.textContent));
-    // 视频：海报帧作 CSS 底图（小图，无需 blob），视频异步挂载前/解码失败时兜底；
-    // 图片：大图经 asCssUrl 转 blob URL（内部会释放上一张 hero blob）
-    if (isVideo) releaseHeroBlob();
-    else releaseVideo({ fade: true });
-    const heroUrl = isVideo ? theme.poster : asCssUrl(theme.dataUrl);
-    style.textContent = buildCustomCss(heroUrl, flat, theme.id) + (isVideo ? VIDEO_LAYER_CSS : "");
-    document.documentElement.dataset.workbuddySkin = theme.id;
-    applyMode(flat.surface);
-    ensureCustomRow(theme);
-    persistActive(theme.id);
-    pushRecent(theme.id);
-    paint(theme.id);
-    if (isVideo) mountVideo(theme);
+    applySkinSwap({
+      css: () => {
+        // 视频：海报帧作 CSS 底图（小图，无需 blob），视频异步挂载前/解码失败时兜底；
+        // 图片：大图经 asCssUrl 转 blob URL（内部会释放上一张 hero blob）。
+        // 取 hero 须在旧资源清理（onBefore）之后——asCssUrl 会释放上一张 hero blob；
+        // 故 css 传函数，由 swap 在 onBefore 之后求值
+        const heroUrl = isVideo ? theme.poster : asCssUrl(theme.dataUrl);
+        return buildCustomCss(heroUrl, flat, theme.id) + (isVideo ? VIDEO_LAYER_CSS : "");
+      },
+      surface: flat.surface,
+      id: theme.id,
+      onBefore: () => {
+        if (isVideo) releaseHeroBlob();
+        else releaseVideo({ fade: true });
+      },
+      onApplied: () => {
+        ensureCustomRow(theme);
+        pushRecent(theme.id);
+        if (isVideo) mountVideo(theme);
+      },
+    });
   };
 
   const deleteCustom = (id) => {
