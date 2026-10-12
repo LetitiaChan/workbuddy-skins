@@ -25,7 +25,13 @@ export const CSS_SENTINELS = {
 // 否则半透明视频与静态海报帧错位叠加出重影；视频缺失时标记不在，海报兜底照常
 export const VIDEO_LAYER_CSS = "\n#root { isolation: isolate !important; }\nbody[data-wb-skin-page=\"chat\"] .wb-skin-video-layer { opacity: .35 !important; }\nbody[data-wb-skin-page=\"chat\"][data-wb-skin-video=\"on\"] #root { background: linear-gradient(0deg, color-mix(in srgb, var(--wb-surface) 50%, transparent), color-mix(in srgb, var(--wb-surface) 50%, transparent)), var(--wb-surface) !important; }\n";
 
-export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTemplate = "" }) {
+// 菜单内新版本提示：GitHub Releases latest 的轮询间隔与结果缓存键（localStorage）。
+// 缓存 24h：每次注入都查 API 会浪费匿名配额（60 次/小时/IP）且拖出多余请求
+export const RELEASE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+export const RELEASE_CACHE_KEY = "workbuddySkinReleaseCache";
+const RELEASE_API_LITERAL = "https://api.github.com/repos/LetitiaChan/workbuddy-skins/releases/latest";
+
+export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTemplate = "", releaseCheck = null }) {
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new Error("皮肤菜单至少需要一个主题");
   }
@@ -68,9 +74,17 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     recentKey: "workbuddySkinRecent",
     maxCustomSlots: 10,
   });
+  // 仅 zip 安装（打包时注入当前版本号）才启用菜单内更新提示；git 注入为 null 时客户端整段短路。
+  // 单独序列化拼进脚本：releaseCheck 含 URL/间隔等常量，放 Node 侧模板里随版本演进
+  const releaseJson = JSON.stringify(
+    releaseCheck && typeof releaseCheck.currentVersion === "string"
+      ? { currentVersion: releaseCheck.currentVersion, api: RELEASE_API_LITERAL, cacheKey: RELEASE_CACHE_KEY, intervalMs: RELEASE_CHECK_INTERVAL_MS }
+      : null,
+  );
 
   return `(() => {
   const data = ${payload};
+  const releaseCfg = ${releaseJson};
 
   // 统一诊断日志：切换/加载失败时控制台输出阶段名+主题 id，便于定位「点了没反应」类问题
   const logError = (stage, detail, error) => {
@@ -259,6 +273,66 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   button.addEventListener("pointerup", endDrag);
   button.addEventListener("pointercancel", endDrag);
   button.addEventListener("dblclick", () => { suppressClick = true; resetPos(); });
+
+  // ---- 新版本徽章（仅 zip 安装启用）：异步查 GitHub Releases latest，
+  // 有新版本时在色盘按钮左上角叠橙色圆点，点击直达 Release 页并隐藏。
+  // 结果缓存 localStorage 24h；离线/超时/解析失败一律静默，不影响菜单 ----
+  let releaseDot = null;
+  function readReleaseCache() {
+    try {
+      const cached = JSON.parse(localStorage.getItem(releaseCfg?.cacheKey ?? "") ?? "null");
+      return cached && typeof cached.latest === "string" ? cached : null;
+    } catch { return null; }
+  }
+  function compareReleaseVersions(a, b) {
+    const parse = (v) => String(v).replace(/^v/i, "").split(".").map((x) => Number.parseInt(x, 10) || 0);
+    const pa = parse(a);
+    const pb = parse(b);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+      const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+      if (diff !== 0) return diff;
+    }
+    return 0;
+  }
+  if (releaseCfg) {
+    releaseDot = document.createElement("span");
+    releaseDot.textContent = "\\u{1F7E0}";
+    releaseDot.title = "\\u53d1\\u73b0\\u65b0\\u7244\\u672c\\uff0c\\u70b9\\u51fb\\u524d\\u5f80\\u4e0b\\u8f7d";
+    releaseDot.style.cssText = "display:none;position:absolute;top:-2px;left:-4px;font-size:10px;line-height:1;cursor:pointer;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));";
+    button.appendChild(releaseDot);
+    // relative 仅服务徽章绝对定位，不改变按钮原有布局
+    button.style.position = "relative";
+    releaseDot.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const cachedUrl = readReleaseCache()?.url;
+      if (cachedUrl) window.open(cachedUrl, "_blank", "noopener");
+      releaseDot.style.display = "none";
+    });
+
+    const showReleaseDot = (cached) => {
+      if (cached && compareReleaseVersions(cached.latest, releaseCfg.currentVersion) > 0) {
+        releaseDot.style.display = "block";
+      }
+    };
+    const cached = readReleaseCache();
+    // 缓存新鲜直接用；过期才请求（8s 超时，GitHub 国内偶发慢）
+    if (cached && Number.isFinite(Date.parse(cached.at)) && Date.now() - Date.parse(cached.at) < releaseCfg.intervalMs) {
+      showReleaseDot(cached);
+    } else {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      fetch(releaseCfg.api, { headers: { Accept: "application/vnd.github+json" }, signal: controller.signal })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((json) => {
+          if (!json || typeof json.tag_name !== "string") return;
+          const next = { at: new Date().toISOString(), latest: json.tag_name, url: typeof json.html_url === "string" ? json.html_url : null };
+          try { localStorage.setItem(releaseCfg.cacheKey, JSON.stringify(next)); } catch {}
+          showReleaseDot(next);
+        })
+        .catch(() => { showReleaseDot(cached); })
+        .finally(() => clearTimeout(timer));
+    }
+  }
 
   // 主题选择弹窗：遮罩 + 居中对话框，按分类网格陈列缩略图卡片。
   // 弹窗挂 root 内（root 无 transform/filter，fixed 仍相对视口），随 root 一并 teardown。

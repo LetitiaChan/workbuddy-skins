@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { CdpSession, fetchRendererTargets, waitForRendererTargets } from "./cdp-client.mjs";
 import { BASE64_DECODE_SNIPPET, IDB_OPEN_SNIPPET, VIDEO_DB_LITERALS } from "./renderer-snippets.mjs";
@@ -7,6 +8,9 @@ import { buildMascotCss, buildPaletteCss, buildSkinCss, buildTaglineCss } from "
 import { buildSkinMenuScript, CSS_SENTINELS, TEARDOWN_GLOBAL, VIDEO_LAYER_CSS } from "./skin-menu.mjs";
 import { isInsideDir } from "./theme-schema.mjs";
 import { probeAnimatedSize } from "./theme-store.mjs";
+import { readLocalReleaseVersion } from "./update-check.mjs";
+
+const sourceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const STYLE_ID = "workbuddy-skin-style";
 const MENU_ID = "workbuddy-skin-menu";
@@ -367,12 +371,16 @@ export async function applySkin({ loadedTheme, themes, port, activeId, deps = {}
     if (failedId === themeId) throw outcome.reason;
     themeWarnings.push(`主题 ${failedId} 构建条目失败，未进菜单：${errorText(outcome.reason)}`);
   }
+  // zip 安装才有版本文件：把当前版本号注入菜单，客户端自行轮询 GitHub 提示新版本；
+  // git clone 为 null，菜单整段不启用
+  const currentVersion = await readLocalReleaseVersion({ versionFile: join(sourceRoot, "release-version.json") });
   const expression = buildSkinMenuScript({
     entries,
     activeId: themeId,
     styleId: STYLE_ID,
     menuId: MENU_ID,
     cssTemplate: buildCustomCssTemplate(),
+    releaseCheck: currentVersion ? { currentVersion } : null,
   });
   const plan = await prepareVideoSources(entries);
   const videoWarnings = plan.warning ? [plan.warning] : [];

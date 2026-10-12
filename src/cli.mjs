@@ -11,6 +11,11 @@ import { applySkin, removeSkin, skinStatus, readSavedActiveSkin, activateSavedSk
 import { readState, writeState } from "./state-store.mjs";
 import { loadTheme } from "./theme-schema.mjs";
 import { createSingleImageTheme, listThemes } from "./theme-store.mjs";
+import { checkReleaseUpdate, readLocalReleaseVersion } from "./update-check.mjs";
+
+// 更新提示的后台等待上限：GitHub API 国内偶发慢，超时就放弃提示（不阻塞命令退出）。
+// 检查结果已写入 state.json 缓存，提示丢失后下次命令立即可见
+const UPDATE_HINT_TIMEOUT_MS = 5000;
 
 const sourceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -38,7 +43,7 @@ function portFrom(value) {
 
 function defaults(overrides) {
   const paths = resolveStudioPaths();
-  return {
+  const deps = {
     bundledThemesRoot: join(sourceRoot, "themes"),
     userThemesRoot: paths.userThemesRoot,
     loadTheme,
@@ -56,6 +61,11 @@ function defaults(overrides) {
     repoUpdate: repoUpdateInfo,
     ...overrides,
   };
+  // releaseUpdate 依赖 readStateFile/writeStateFile（结果缓存进 state.json），
+  // 在 overrides 展开后定义，让测试替换 state 存取时检查模块同样走桩
+  deps.releaseUpdate = overrides.releaseUpdate
+    ?? (() => checkReleaseUpdate({ sourceRoot, readStateFile: deps.readStateFile, writeStateFile: deps.writeStateFile }));
+  return deps;
 }
 
 const exists = (path) => access(path).then(() => true, () => false);
@@ -67,9 +77,13 @@ async function gitOutput(args, timeoutMs) {
   return stdout.trim();
 }
 
-// 仓库更新提示：对比本地 HEAD 与远端同分支（分支不存在于远端时回落远端默认分支）。
+// 仓库更新提示：zip 用户（有打包写入的 release-version.json）走 GitHub Release 检查；
+// git clone 用户对比本地 HEAD 与远端同分支（分支不存在于远端时回落远端默认分支）。
 // 任何一步失败（无 git、非仓库、离线）都向上抛，由 doctor 降级为 checked:false，不影响报告主体
 async function repoUpdateInfo() {
+  if (await readLocalReleaseVersion({ versionFile: join(sourceRoot, "release-version.json") })) {
+    return checkReleaseUpdate({ sourceRoot, readStateFile: readState, writeStateFile: writeState });
+  }
   if (!(await exists(join(sourceRoot, ".git")))) return { isRepo: false, checked: false };
   const [head, branch] = await Promise.all([
     gitOutput(["rev-parse", "HEAD"], 5000),
@@ -97,6 +111,20 @@ function recordState(deps, patch) {
   return deps.writeStateFile(patch).catch(() => {});
 }
 
+// apply/status 结果附带的新版本提示：后台检查 + 限时等待，离线/超时/无更新都返回 null，
+// 提示是增强项，绝不允许拖慢或打断命令主流程
+async function updateHint(deps) {
+  try {
+    const result = await Promise.race([
+      deps.releaseUpdate(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("更新检查超时")), UPDATE_HINT_TIMEOUT_MS)),
+    ]);
+    return result?.updateAvailable ? { latest: result.latestVersion, url: result.url, hint: result.hint } : null;
+  } catch {
+    return null;
+  }
+}
+
 // doctor 环境报告附带的 Node 版本检查（注入脚本用到较新的内置 API，要求 18+）
 function nodeInfo() {
   const major = Number(process.versions.node.split(".")[0]);
@@ -122,8 +150,12 @@ export async function runCli(argv, overrides = {}) {
   }
   if (command === "apply") {
     const port = portFrom(args.port);
+    // 与换肤主流程并发发起（内部写 state 缓存），成功后在结果上附带新版本提示
+    const pendingUpdate = updateHint(deps);
     try {
-      return await applyCommand(deps, roots, args, port);
+      const result = await applyCommand(deps, roots, args, port);
+      const update = await pendingUpdate;
+      return update ? { ...result, update } : result;
     } catch (error) {
       await recordState(deps, {
         lastApply: { at: new Date().toISOString(), ok: false, port, themeId: args.theme ?? null, error: error.message },
@@ -137,7 +169,10 @@ export async function runCli(argv, overrides = {}) {
     await recordState(deps, { lastPause: { at: new Date().toISOString(), ok: true, port, removed: result.removed } });
     return result;
   }
-  if (command === "status") return deps.skinStatus({ port: portFrom(args.port) });
+  if (command === "status") {
+    const [result, update] = await Promise.all([deps.skinStatus({ port: portFrom(args.port) }), updateHint(deps)]);
+    return update ? { targets: result, update } : result;
+  }
   if (command === "doctor") {
     const port = portFrom(args.port);
     // 三项诊断互不依赖，并发；各自降级（状态损坏/未运行/离线），绝不让 doctor 整体失败

@@ -85,6 +85,8 @@
 - **不想装 git**：从 [Releases](https://github.com/LetitiaChan/workbuddy-skins/releases) 下载最新 zip，解压即用（含全部源码与主题）
 - **常规方式**：`git clone` 本仓库（推荐，方便 `git pull` 跟进更新）
 
+> 🔔 **新版本提醒**：zip 安装会在 `apply` / `status` 命令输出末尾提示新版本，🎨 菜单按钮左上角也会出现橙色圆点（点击直达下载页）；git clone 安装由 `doctor` 的 `repo` 字段提示 `git pull`。检查每 24 小时最多一次，离线时静默降级，不影响换肤。
+
 ### 🤖 用 AI 一键安装（推荐）
 
 不想自己敲命令？把下面这段提示词**整段复制**发给任意 AI 助手（CodeBuddy / Claude / Cursor 等）即可：

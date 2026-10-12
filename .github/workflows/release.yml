@@ -13,6 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 写入版本文件
+        shell: pwsh
+        run: |
+          # zip 内置版本号：apply/doctor 据此识别 Release 安装并做更新检查（git clone 无此文件）
+          # -NoNewline 保证文件是单行 JSON，无尾随换行
+          "{ `"version`": `"${{ github.ref_name }}`" }" | Out-File src/release-version.json -Encoding utf8 -NoNewline
+
       - name: 打包 zip
         shell: pwsh
         run: |

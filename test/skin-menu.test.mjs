@@ -592,3 +592,20 @@ test("皮肤弹窗：配色主题卡用四色迷你界面模型（surface 实底
   const payload2 = JSON.parse(noText.slice(noText.indexOf("const data = ") + 13, noText.indexOf(";\n", noText.indexOf("const data = "))));
   assert.equal(payload2.themes[0].text, null);
 });
+
+test("新版本徽章：releaseCheck 注入后脚本含徽章与缓存逻辑；不传则整段短路", () => {
+  const withRelease = build({ releaseCheck: { currentVersion: "v1.0.0" } });
+  assert.doesNotThrow(() => new Function(withRelease));
+  // 配置行紧随 payload 之后，含当前版本与缓存键
+  assert.ok(withRelease.includes('const releaseCfg = {"currentVersion":"v1.0.0"'));
+  assert.ok(withRelease.includes("api.github.com/repos/LetitiaChan/workbuddy-skins/releases/latest"));
+  // 徽章结构：橙色圆点、点击直达、缓存读写
+  assert.ok(withRelease.includes("releaseDot"));
+  assert.ok(withRelease.includes("localStorage.getItem"));
+  assert.ok(withRelease.includes("window.open(cachedUrl"));
+
+  const without = build();
+  assert.ok(without.includes("const releaseCfg = null;"));
+  // releaseCfg 为 null 时徽章代码存在但被 if 短路——关键是配置不含版本与 API 凭据
+  assert.ok(!without.includes('"currentVersion"'));
+});

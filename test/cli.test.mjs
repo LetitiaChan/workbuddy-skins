@@ -127,6 +127,42 @@ test("apply：状态写入失败不阻断换肤结果", async () => {
   assert.equal(result.themeId, "b");
 });
 
+// ---- 更新提示：apply/status 成功时附带 update；失败/无更新不影响结果形状 ----
+const updateStub = { checked: true, channel: "release", currentVersion: "v1.0.0", latestVersion: "v1.2.0", updateAvailable: true, url: "https://example", hint: "发现新版本 v1.2.0" };
+
+test("apply：有新版本时结果附带 update 提示；无更新时结果形状不变", async () => {
+  const withUpdate = applyOverrides({ themes: THEMES });
+  const updated = await runCli(["apply", "--theme", "b"], { ...withUpdate.overrides, releaseUpdate: async () => updateStub });
+  assert.equal(updated.themeId, "b");
+  assert.equal(updated.update.latest, "v1.2.0");
+  assert.equal(updated.update.url, "https://example");
+
+  const noUpdate = applyOverrides({ themes: THEMES });
+  const plain = await runCli(["apply", "--theme", "b"], { ...noUpdate.overrides, releaseUpdate: async () => ({ ...updateStub, updateAvailable: false }) });
+  assert.equal(plain.update, undefined);
+});
+
+test("apply：更新检查失败/超时静默，不换出错误也不阻塞结果", async () => {
+  const { overrides } = applyOverrides({ themes: THEMES });
+  const result = await runCli(["apply", "--theme", "b"], {
+    ...overrides,
+    releaseUpdate: async () => { throw new Error("offline"); },
+  });
+  assert.equal(result.themeId, "b");
+  assert.equal(result.update, undefined);
+});
+
+test("status：有新版本时包装为 { targets, update }；无更新保持原样返回数组", async () => {
+  const statusResult = [{ installed: true, menu: true, themeId: "miku-light" }];
+  const skinStatus = async () => statusResult;
+  const wrapped = await runCli(["status"], { skinStatus, releaseUpdate: async () => updateStub });
+  assert.deepEqual(wrapped.targets, statusResult);
+  assert.equal(wrapped.update.latest, "v1.2.0");
+
+  const plain = await runCli(["status"], { skinStatus, releaseUpdate: async () => ({ ...updateStub, updateAvailable: false }) });
+  assert.deepEqual(plain, statusResult);
+});
+
 test("pause：记录 lastPause（removed 数）", async () => {
   const spy = stateSpy();
   const result = await runCli(["pause"], {
