@@ -74,7 +74,11 @@ test("sky-clock skin.js：激活即写入 --sky-* 变量与场景 SVG，明暗�
     assert.equal(dom.body.dataset.vscodeThemeName, dark ? "IDE Night" : "IDE Light");
     assert.equal(dom.body.classList.contains("dark"), dark);
     assert.equal(dom.html.classList.contains("vscode-light"), !dark);
+    // 实况色调钩子：菜单弹窗打开时读它刷新背景/选中描边（取当前天空中间色）
+    assert.match(dom.body.dataset.workbuddySkinTone ?? "", /^#[0-9a-f]{6}$/i);
+    assert.equal(dom.body.dataset.workbuddySkinTone, dom.body.style.props.get("--sky-mid"));
     teardown();
+    assert.equal(dom.body.dataset.workbuddySkinTone, undefined, "teardown 应清除实况色调钩子");
   } finally {
     dom.restore();
   }

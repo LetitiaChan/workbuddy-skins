@@ -291,6 +291,10 @@ const tick = () => {
   st.setProperty("--sky-shadow", dark ? "rgba(20,50,110,0.28)" : "rgba(60,110,170,0.18)");
   st.setProperty("--sky-art-opacity", dark ? "0.32" : "0.18");
   st.setProperty("--sky-scheme", dark ? "dark" : "light");
+  // 实况色调钩子：主题选择弹窗打开时读它刷新背景/选中描边——天色每分钟流转，
+  // theme.json 里的静态 surface/accent 只是快照；mid 是当前时刻天空中间色，
+  // 亮暗与明暗模式一致，弹窗文字色由菜单按亮度自适应
+  document.body.dataset.workbuddySkinTone = sky.mid;
   writeMode(dark);
 };
 
@@ -326,4 +330,5 @@ return function teardown() {
   observer.disconnect();
   const st = document.body.style;
   SKY_VARS.forEach((p) => st.removeProperty(p));
+  delete document.body.dataset.workbuddySkinTone;
 };

@@ -337,7 +337,8 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   // 主题选择弹窗：遮罩 + 居中对话框，按分类网格陈列缩略图卡片。
   // 弹窗挂 root 内（root 无 transform/filter，fixed 仍相对视口），随 root 一并 teardown。
   // 结构：header 固定不滚 + body 独立滚动（滚动条从标题栏下方开始）；
-  // 背景/文字色跟随当前主题 surface/text（applyMode 时同步更新，见 updateDialogTone）
+  // 背景/文字色跟随当前主题 surface/text（applyMode 时同步更新，见 paintDialogTone）
+  const HEX_COLOR_RUNTIME = /^#[0-9a-f]{3,8}$/i;
   const overlay = document.createElement("div");
   overlay.style.cssText = "display:none;position:fixed;inset:0;z-index:2147483001;background:rgba(15,20,35,.42);backdrop-filter:blur(6px);align-items:center;justify-content:center;-webkit-app-region:no-drag;app-region:no-drag;";
   const dialog = document.createElement("div");
@@ -346,9 +347,44 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   dialogBody.style.cssText = "overflow-y:auto;padding:12px 20px 20px;scrollbar-width:thin;scrollbar-color:rgba(128,128,128,.45) transparent;";
   overlay.appendChild(dialog);
 
+  // 弹窗强调色（选中描边/悬停/聚焦）：取当前主题主色，打开弹窗时刷新一次，
+  // 不随天色等运行时变化实时跟随（dynamicMode 主题如 sky-clock 每分钟变色，弹窗内不闪）
+  const FALLBACK_ACCENT = "#24c9d7";
+  let dialogAccent = FALLBACK_ACCENT;
+  const refreshDialogAccent = () => {
+    // 实况色（dynamicMode 主题的当前时刻色）优先于 theme.json 静态 accent
+    const live = liveTone();
+    const id = document.documentElement.dataset.workbuddySkin ?? null;
+    const accent = live ?? (id ? resolveRecent(id)?.accent : null);
+    dialogAccent = (accent && hexToRgb(accent)) ? accent : FALLBACK_ACCENT;
+  };
+  // dialogAccent 恒为合法 hex（fallback 兜底），可直接进 color-mix / 转 rgba
+  const accentCss = (alpha) => {
+    const rgb = hexToRgb(dialogAccent);
+    return "rgba(" + rgb.join(",") + "," + alpha + ")";
+  };
+
+  // 实况色调钩子：dynamicMode 主题（如四时天空）的伴随 JS 把当前时刻派生色写入
+  // body[data-workbuddy-skin-tone]（hex 字符串），弹窗打开/重绘时优先取它覆盖
+  // 背景与 accent——主题每分钟变色，静态 theme.json 的 surface/accent 只是快照
+  const liveTone = () => {
+    const raw = document.body?.dataset?.workbuddySkinTone ?? "";
+    return HEX_COLOR_RUNTIME.test(raw) ? raw : null;
+  };
+  // 弹窗背景/文字色同步：优先实况色，回退主题声明色，再回退默认浅色
+  const paintDialogTone = (surface) => {
+    const tone = liveTone() ?? surface;
+    dialog.style.background = "color-mix(in srgb, " + tone + " 94%, transparent)";
+    dialog.style.color = isLightSurface(tone) ? "#17344f" : "#eef2f8";
+  };
+
   const closeDialog = () => { overlay.style.display = "none"; };
   const openDialog = () => {
     overlay.style.display = "flex";
+    refreshDialogAccent();
+    // 打开瞬间按实况色重刷弹窗色调（dynamicMode 主题此刻的天空色）
+    if (liveTone()) paintDialogTone(liveTone());
+    paint(document.documentElement.dataset.workbuddySkin ?? null);
     // 打开时刷新「最近」行并按当前搜索词重算显隐，光标直接进搜索框
     renderRecent();
     applyFilter();
@@ -369,8 +405,8 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   const paint = (id) => {
     for (const [rowId, row] of rows) {
       const active = rowId === id;
-      row.style.borderColor = active ? "rgba(36,201,215,.9)" : "transparent";
-      row.style.background = active ? "rgba(36,201,215,.10)" : "color-mix(in srgb, currentColor 5%, transparent)";
+      row.style.borderColor = active ? accentCss(.9) : "transparent";
+      row.style.background = active ? accentCss(.10) : "color-mix(in srgb, currentColor 5%, transparent)";
       const label = row.lastElementChild;
       if (label) label.style.fontWeight = active ? "700" : "500";
     }
@@ -400,7 +436,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     // 主题名最多两行（中英双语名普遍超一行）：-webkit-line-clamp 换行展示，超出仍截断
     name.style.cssText = "font-size:12px;line-height:18px;font-weight:500;text-align:center;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;";
     item.append(preview, name);
-    item.addEventListener("mouseenter", () => { if (item.style.borderColor === "transparent") item.style.borderColor = "rgba(36,201,215,.45)"; });
+    item.addEventListener("mouseenter", () => { if (item.style.borderColor === "transparent") item.style.borderColor = accentCss(.45); });
     item.addEventListener("mouseleave", () => paint(document.documentElement.dataset.workbuddySkin ?? null));
     // 兜底：onPick（切换/上传入口）任何同步异常都不允许打断菜单，统一落日志
     item.addEventListener("click", () => {
@@ -511,10 +547,10 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     }
     modeObserver.disconnect();
     // 弹窗背景/文字色与当前主题一致（恢复原生时回到白色默认）
-    dialog.style.background = "color-mix(in srgb, " + surface + " 94%, transparent)";
-    dialog.style.color = isLightSurface(surface) ? "#17344f" : "#eef2f8";
+    paintDialogTone(surface);
     if (!pin) {
-      // 恢复原生：解除钉住，类与属性的所有权还给应用
+      // 恢复原生 / dynamicMode 主题：不钉住。dynamicMode（如四时天空）的明暗与
+      // 实况色由伴随 JS 接管，弹窗色调后续经 data-workbuddy-skin-tone 实况刷新
       pinnedDark = null;
       return;
     }
@@ -660,7 +696,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   searchInput.type = "text";
   searchInput.placeholder = "\\u641c\\u7d22\\u4e3b\\u9898\\u2026";
   searchInput.style.cssText = "flex:1;min-width:0;margin:0 10px;padding:5px 10px;border-radius:8px;border:1px solid color-mix(in srgb, currentColor 18%, transparent);background:color-mix(in srgb, currentColor 6%, transparent);color:inherit;font:inherit;outline:none;box-sizing:border-box;";
-  searchInput.addEventListener("focus", () => { searchInput.style.borderColor = "rgba(36,201,215,.7)"; });
+  searchInput.addEventListener("focus", () => { searchInput.style.borderColor = accentCss(.7); });
   searchInput.addEventListener("blur", () => { searchInput.style.borderColor = "color-mix(in srgb, currentColor 18%, transparent)"; });
   // 随机换一张按钮（🎲）：逻辑见 randomPick（建卡完成后定义，点击时早已就位）
   const randomBtn = document.createElement("span");
@@ -1483,7 +1519,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   const uploadCard = card("\\u81ea\\u5b9a\\u4e49\\u4e3b\\u9898", { swatch: "transparent", onPick: () => picker.click(), parent: customsSection.grid });
   uploadCard.style.borderStyle = "dashed";
   uploadCard.style.borderColor = "color-mix(in srgb, currentColor 30%, transparent)";
-  uploadCard.addEventListener("mouseenter", () => { uploadCard.style.borderColor = "rgba(36,201,215,.9)"; });
+  uploadCard.addEventListener("mouseenter", () => { uploadCard.style.borderColor = accentCss(.9); });
   uploadCard.addEventListener("mouseleave", () => { uploadCard.style.borderColor = "color-mix(in srgb, currentColor 30%, transparent)"; });
   const plus = document.createElement("div");
   plus.textContent = "\\uff0b";

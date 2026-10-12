@@ -502,9 +502,12 @@ test("皮肤弹窗：标题为「选择主题」，applyMode 同步弹窗背景/
   const script = build();
   assert.doesNotThrow(() => new Function(script));
   assert.ok(script.includes(String.raw`"\u9009\u62e9\u4e3b\u9898"`));
-  // applyMode 内同步弹窗色调（surface 深则弹窗深、文字浅；恢复原生 pin:false 也回白）
-  assert.ok(script.includes('dialog.style.background = "color-mix(in srgb, " + surface + " 94%, transparent)"'));
-  assert.ok(script.includes('dialog.style.color = isLightSurface(surface) ? "#17344f" : "#eef2f8"'));
+  // applyMode 经 paintDialogTone 同步弹窗色调（surface 深则弹窗深、文字浅；
+  // dynamicMode 主题优先取 body[data-workbuddy-skin-tone] 实况色）
+  assert.ok(script.includes('dialog.style.background = "color-mix(in srgb, " + tone + " 94%, transparent)"'));
+  assert.ok(script.includes('dialog.style.color = isLightSurface(tone) ? "#17344f" : "#eef2f8"'));
+  assert.ok(script.includes('paintDialogTone(surface)'));
+  assert.ok(script.includes("workbuddySkinTone"));
   // 卡片/小节/关闭按钮颜色走 currentColor 混合，随弹窗文字色自适应深浅
   assert.ok(script.includes("color-mix(in srgb, currentColor 5%, transparent)"));
   assert.ok(script.includes("color-mix(in srgb, currentColor 55%, transparent)"));
