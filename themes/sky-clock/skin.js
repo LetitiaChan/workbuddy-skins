@@ -308,7 +308,12 @@ const tick = () => {
   const botRgb = hex2rgb(sky.bot);
   const target = dark ? [10, 17, 32] : [255, 255, 255];
   const mixT = dark ? 0.58 : 0.6;
-  st.setProperty("--sky-panel", rgba(botRgb.map((v, i) => lerp(v, target[i], mixT)), dark ? 0.82 : 0.8));
+  const panelRgb = botRgb.map((v, i) => lerp(v, target[i], mixT));
+  st.setProperty("--sky-panel", rgba(panelRgb, dark ? 0.82 : 0.8));
+  // 弹窗面板色由上方天空色派生（同 panel 混合比例）：弹窗是顶部下拉浮层，
+  // 取色与视窗上半部的天色一致，而不是底部天际的暖色带
+  const topRgb = hex2rgb(sky.top);
+  const dialogRgb = topRgb.map((v, i) => lerp(v, target[i], mixT));
   st.setProperty("--sky-border", dark ? "rgba(140,180,230,0.22)" : "rgba(40,90,150,0.16)");
   st.setProperty("--sky-shadow", dark ? "rgba(20,50,110,0.28)" : "rgba(60,110,170,0.18)");
   // 夜间场景（星月/山脊剪影）需要更高存在感才看得清，白天云与太阳弱一些避免喧宾夺主
@@ -318,6 +323,9 @@ const tick = () => {
   // theme.json 里的静态 surface/accent 只是快照；mid 是当前时刻天空中间色，
   // 亮暗与明暗模式一致，弹窗文字色由菜单按亮度自适应
   document.body.dataset.workbuddySkinTone = sky.mid;
+  // 实况面板色钩子：弹窗背景取上方天空派生色（见上方 dialogRgb），
+  // 避免直接用 sky.mid（天空中间色）或底部天际色导致色相偏差
+  document.body.dataset.workbuddySkinSurface = rgb2hex(dialogRgb);
   writeMode(dark);
 };
 
@@ -354,4 +362,5 @@ return function teardown() {
   const st = document.body.style;
   SKY_VARS.forEach((p) => st.removeProperty(p));
   delete document.body.dataset.workbuddySkinTone;
+  delete document.body.dataset.workbuddySkinSurface;
 };

@@ -31,7 +31,7 @@ export const RELEASE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const RELEASE_CACHE_KEY = "workbuddySkinReleaseCache";
 const RELEASE_API_LITERAL = "https://api.github.com/repos/LetitiaChan/workbuddy-skins/releases/latest";
 
-export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTemplate = "", releaseCheck = null }) {
+export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTemplate = "", releaseCheck = null, displayVersion = null }) {
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new Error("皮肤菜单至少需要一个主题");
   }
@@ -73,6 +73,8 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     posKey: "workbuddySkinMenuPos",
     recentKey: "workbuddySkinRecent",
     maxCustomSlots: 10,
+    // 展示用版本号：zip 走 release-version.json，git 检出回退 package.json；都取不到为 null
+    version: typeof displayVersion === "string" && displayVersion ? displayVersion : null,
   });
   // 仅 zip 安装（打包时注入当前版本号）才启用菜单内更新提示；git 注入为 null 时客户端整段短路。
   // 单独序列化拼进脚本：releaseCheck 含 URL/间隔等常量，放 Node 侧模板里随版本演进
@@ -365,15 +367,21 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   };
 
   // 实况色调钩子：dynamicMode 主题（如四时天空）的伴随 JS 把当前时刻派生色写入
-  // body[data-workbuddy-skin-tone]（hex 字符串），弹窗打开/重绘时优先取它覆盖
-  // 背景与 accent——主题每分钟变色，静态 theme.json 的 surface/accent 只是快照
+  // body[data-workbuddy-skin-tone]（hex 字符串，accent 用）与
+  // body[data-workbuddy-skin-surface]（hex 字符串，背景用，与主界面面板同源），
+  // 弹窗打开/重绘时优先取它们覆盖背景与 accent——主题每分钟变色，
+  // 静态 theme.json 的 surface/accent 只是快照
   const liveTone = () => {
     const raw = document.body?.dataset?.workbuddySkinTone ?? "";
     return HEX_COLOR_RUNTIME.test(raw) ? raw : null;
   };
-  // 弹窗背景/文字色同步：优先实况色，回退主题声明色，再回退默认浅色
+  const liveSurface = () => {
+    const raw = document.body?.dataset?.workbuddySkinSurface ?? "";
+    return HEX_COLOR_RUNTIME.test(raw) ? raw : null;
+  };
+  // 弹窗背景/文字色同步：背景优先实况面板色，再回退主题声明色，最后回退默认浅色
   const paintDialogTone = (surface) => {
-    const tone = liveTone() ?? surface;
+    const tone = liveSurface() ?? liveTone() ?? surface;
     dialog.style.background = "color-mix(in srgb, " + tone + " 94%, transparent)";
     dialog.style.color = isLightSurface(tone) ? "#17344f" : "#eef2f8";
   };
@@ -382,8 +390,8 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   const openDialog = () => {
     overlay.style.display = "flex";
     refreshDialogAccent();
-    // 打开瞬间按实况色重刷弹窗色调（dynamicMode 主题此刻的天空色）
-    if (liveTone()) paintDialogTone(liveTone());
+    // 打开瞬间按实况色重刷弹窗色调（dynamicMode 主题此刻的天空/面板色）
+    if (liveTone() || liveSurface()) paintDialogTone(liveSurface() ?? liveTone());
     paint(document.documentElement.dataset.workbuddySkin ?? null);
     // 打开时刷新「最近」行并按当前搜索词重算显隐，光标直接进搜索框
     renderRecent();
@@ -713,7 +721,13 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   closeBtn.addEventListener("mouseenter", () => { closeBtn.style.background = "color-mix(in srgb, currentColor 8%, transparent)"; });
   closeBtn.addEventListener("mouseleave", () => { closeBtn.style.background = "transparent"; });
   closeBtn.addEventListener("click", closeDialog);
-  header.append(titleEl, searchInput, randomBtn, closeBtn);
+  // 版本号：紧贴标题的弱化小字，flex:none 让搜索框继续占满剩余宽度；取不到版本时不渲染
+  const versionEl = data.version ? document.createElement("div") : null;
+  if (versionEl) {
+    versionEl.textContent = data.version;
+    versionEl.style.cssText = "flex:none;margin-left:6px;font-size:11px;font-weight:500;opacity:.45;white-space:nowrap;";
+  }
+  header.append(titleEl, ...(versionEl ? [versionEl] : []), searchInput, randomBtn, closeBtn);
   dialog.append(header, dialogBody);
 
   // 分类小节：标题行（extra 挂槽位计数等附加信息）+ 卡片网格，挂进滚动 body

@@ -77,8 +77,11 @@ test("sky-clock skin.js：激活即写入 --sky-* 变量与场景 SVG，明暗�
     // 实况色调钩子：菜单弹窗打开时读它刷新背景/选中描边（取当前天空中间色）
     assert.match(dom.body.dataset.workbuddySkinTone ?? "", /^#[0-9a-f]{6}$/i);
     assert.equal(dom.body.dataset.workbuddySkinTone, dom.body.style.props.get("--sky-mid"));
+    // 实况面板色钩子：弹窗背景取上方天空派生色（而非底部天际色）
+    assert.match(dom.body.dataset.workbuddySkinSurface ?? "", /^#[0-9a-f]{6}$/i);
     teardown();
     assert.equal(dom.body.dataset.workbuddySkinTone, undefined, "teardown 应清除实况色调钩子");
+    assert.equal(dom.body.dataset.workbuddySkinSurface, undefined, "teardown 应清除实况面板色钩子");
   } finally {
     dom.restore();
   }

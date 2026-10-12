@@ -503,11 +503,13 @@ test("皮肤弹窗：标题为「选择主题」，applyMode 同步弹窗背景/
   assert.doesNotThrow(() => new Function(script));
   assert.ok(script.includes(String.raw`"\u9009\u62e9\u4e3b\u9898"`));
   // applyMode 经 paintDialogTone 同步弹窗色调（surface 深则弹窗深、文字浅；
-  // dynamicMode 主题优先取 body[data-workbuddy-skin-tone] 实况色）
+  // dynamicMode 主题背景优先取 body[data-workbuddy-skin-surface] 实况面板色，
+  // 回退 body[data-workbuddy-skin-tone] 实况天色）
   assert.ok(script.includes('dialog.style.background = "color-mix(in srgb, " + tone + " 94%, transparent)"'));
   assert.ok(script.includes('dialog.style.color = isLightSurface(tone) ? "#17344f" : "#eef2f8"'));
   assert.ok(script.includes('paintDialogTone(surface)'));
   assert.ok(script.includes("workbuddySkinTone"));
+  assert.ok(script.includes("workbuddySkinSurface"));
   // 卡片/小节/关闭按钮颜色走 currentColor 混合，随弹窗文字色自适应深浅
   assert.ok(script.includes("color-mix(in srgb, currentColor 5%, transparent)"));
   assert.ok(script.includes("color-mix(in srgb, currentColor 55%, transparent)"));
@@ -611,4 +613,20 @@ test("新版本徽章：releaseCheck 注入后脚本含徽章与缓存逻辑；�
   assert.ok(without.includes("const releaseCfg = null;"));
   // releaseCfg 为 null 时徽章代码存在但被 if 短路——关键是配置不含版本与 API 凭据
   assert.ok(!without.includes('"currentVersion"'));
+});
+
+test("版本号展示：displayVersion 进 payload 并在标题旁渲染；空/非字符串/不传一律 null", () => {
+  const payloadOf = (script) => JSON.parse(
+    script.slice(script.indexOf("const data = ") + 13, script.indexOf(";\n", script.indexOf("const data = "))),
+  );
+  const withVersion = build({ displayVersion: "1.1.0" });
+  assert.doesNotThrow(() => new Function(withVersion));
+  assert.equal(payloadOf(withVersion).version, "1.1.0");
+  // 标题旁渲染：versionEl 存在时插进 header（flex:none 不挤压搜索框）
+  assert.ok(withVersion.includes("header.append(titleEl, ...(versionEl ? [versionEl] : [])"));
+  assert.ok(withVersion.includes("flex:none;margin-left:6px"));
+
+  assert.equal(payloadOf(build()).version, null);
+  assert.equal(payloadOf(build({ displayVersion: "" })).version, null);
+  assert.equal(payloadOf(build({ displayVersion: 123 })).version, null);
 });
