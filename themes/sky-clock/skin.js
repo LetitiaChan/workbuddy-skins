@@ -223,7 +223,12 @@ const buildSvg = (h, sky, phase) => {
     // 亮面足够大时环形山落在亮侧（盈右亏左），与太阳的满圆盘明确区分
     const { cx, cy, r } = moon;
     const cxI = cx.toFixed(0), cyI = cy.toFixed(0);
-    parts += '<circle cx="' + cxI + '" cy="' + cyI + '" r="' + (r * 2.4).toFixed(0) + '" fill="url(#moonGlow)"/>';
+    // 光晕 = 月光的大气散射，强度随照亮比例缩放：新月（illum→0）无光晕，
+    // 弦月约一半，满月最盛且晕圈最大
+    if (phase.illumination >= 0.03) {
+      parts += '<circle cx="' + cxI + '" cy="' + cyI + '" r="' + (r * (1.5 + 0.9 * phase.illumination)).toFixed(0) +
+        '" fill="url(#moonGlow)" opacity="' + phase.illumination.toFixed(2) + '"/>';
+    }
     if (phase.illumination < 0.03) {
       // 新月：只剩一圈微光轮廓
       parts += '<circle cx="' + cxI + '" cy="' + cyI + '" r="' + r + '" fill="none" stroke="#EDF2FA" stroke-opacity="0.10" stroke-width="2"/>';
