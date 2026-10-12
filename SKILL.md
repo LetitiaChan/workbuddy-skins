@@ -51,7 +51,7 @@ No official files are touched.
    ./scripts/apply.command
 
    # or a specific theme via the cross-platform CLI
-   node src/cli.mjs apply --theme mice-cat
+   node src/cli.mjs apply --theme sky-clock
    ```
 
    `apply.command` quits WorkBuddy, relaunches it with the CDP port, waits for
@@ -78,7 +78,7 @@ No official files are touched.
    .\scripts\apply.ps1
 
    # or a specific theme
-   .\scripts\apply.ps1 -Theme mice-cat
+   .\scripts\apply.ps1 -Theme sky-clock
    ```
 
    If you hit an execution-policy error, run once:
@@ -91,7 +91,7 @@ No official files are touched.
    restores the last 🎨 menu choice when run without arguments, works
    regardless of the system execution policy (`-ExecutionPolicy Bypass` is built
    in), keeps the console window open with the error message on failure, and
-   accepts an optional theme id: `Start.bat mice-cat`. Two extra subcommands
+   accepts an optional theme id: `Start.bat sky-clock`. Two extra subcommands
    manage the optional launcher hijack: `Start.bat install` retargets the
    Start Menu shortcut and logon autostart (HKCU Run) to the silent launcher
    (`scripts/launch-hidden.vbs` → `apply.ps1`, no window flash, icon reused

@@ -105,7 +105,7 @@ AI 会克隆仓库、读取根目录的 [`SKILL.md`](SKILL.md)，自动完成**�
 >
 > ```text
 > 用这个开源项目帮我更换 WorkBuddy 的主题：https://github.com/LetitiaChan/workbuddy-skins
-> 用 miku-light 主题（或：用深色原神主题 genshin-night）
+> 用四时天空主题 sky-clock（或：用深色原神主题 genshin-night）
 > ```
 
 ### 🍎 macOS
@@ -115,14 +115,14 @@ AI 会克隆仓库、读取根目录的 [`SKILL.md`](SKILL.md)，自动完成**�
 ./scripts/apply.command
 
 # 或指定主题
-node src/cli.mjs apply --theme mice-cat
+node src/cli.mjs apply --theme sky-clock
 ```
 
 ### 🪟 Windows
 
 **双击根目录的 `Start.bat` 即可**（推荐入口）。它是 `scripts\apply.ps1` 的批处理包装，双击后依次完成：探测 CDP 端口 9223 → 若未就绪则正常退出 WorkBuddy 并以本机调试模式重新打开、等待端口就绪（**已处于调试模式时跳过重启，直接注入，进行中的任务不受影响**）→ 注入皮肤；不带参数时自动恢复你上次在 🎨 菜单里的选择。
 
-- **指定主题**：命令行执行 `Start.bat mice-cat`（双击等价于无参数运行）
+- **指定主题**：命令行执行 `Start.bat sky-clock`（双击等价于无参数运行）
 - **执行策略零配置**：Start.bat 内部以 `-ExecutionPolicy Bypass` 调起 PowerShell，双击不受系统执行策略限制，无需任何前置设置
 - **结果可见**：成功时窗口自动关闭；失败时窗口停住并显示原因（如找不到 WorkBuddy.exe 或 node），方便排查
 
@@ -135,7 +135,7 @@ node src/cli.mjs apply --theme mice-cat
 .\scripts\apply.ps1
 
 # 或指定主题
-.\scripts\apply.ps1 -Theme mice-cat
+.\scripts\apply.ps1 -Theme sky-clock
 
 # 若找不到 WorkBuddy.exe，先跑排查脚本：
 .\scripts\find-workbuddy.ps1
