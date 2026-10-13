@@ -129,8 +129,8 @@ function normalizeMascot(mascot) {
 function normalizeMascotScale(mascotScale, mascot) {
   if (mascotScale === undefined || mascotScale === null) return 1;
   if (mascot === null) throw new Error("theme mascotScale requires a mascot");
-  if (typeof mascotScale !== "number" || !Number.isFinite(mascotScale) || mascotScale < 0.5 || mascotScale > 3) {
-    throw new Error("theme mascotScale must be a number between 0.5 and 3");
+  if (typeof mascotScale !== "number" || !Number.isFinite(mascotScale) || mascotScale < 0.25 || mascotScale > 3) {
+    throw new Error("theme mascotScale must be a number between 0.25 and 3");
   }
   return mascotScale;
 }

@@ -5,8 +5,8 @@
   "order": 10,
   "hero": "hero.webp",
   "mascot": "mascot.webp",
-  "mascotScale": 0.76,
-  "mascotOffset": { "x": 0, "y": -35 },
+  "mascotScale": 0.44,
+  "mascotOffset": { "x": 0, "y": -43 },
   "colors": {
     "accent": "#E5B268",
     "secondary": "#7F92B4",

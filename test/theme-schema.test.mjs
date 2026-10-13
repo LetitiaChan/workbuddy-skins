@@ -306,7 +306,7 @@ test("mascotScale/mascotOffset：默认 1 与 {0,0}，需与 mascot 同配，范
   // 无 mascot 时配置微调参数直接拒绝（防笔误静默失效）
   assert.throws(() => validateThemeManifest({ ...base, mascotScale: 1.2 }), /mascotScale requires a mascot/);
   assert.throws(() => validateThemeManifest({ ...base, mascotOffset: { x: 1 } }), /mascotOffset requires a mascot/);
-  for (const scale of [0.4, 3.1, Number.NaN, "1.2"]) {
+  for (const scale of [0.2, 3.1, Number.NaN, "1.2"]) {
     assert.throws(
       () => validateThemeManifest({ ...withMascot, mascotScale: scale }),
       /mascotScale must be/,
