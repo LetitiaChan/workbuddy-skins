@@ -176,18 +176,32 @@ const buildSvg = (h, sky, phase) => {
   const clouds = cloudState(h);
   let parts = "";
   if (sky.stars > 0.02) {
-    // 每颗星缓慢亮暗呼吸（SMIL）：周期 6–13s、相位错开、幅度各异，近似大气闪烁
-    parts += '<g fill="#EAFFF8" opacity="' + sky.stars.toFixed(2) + '">' +
+    // 闪烁（SMIL）：保持原 8 颗星的疏密，只把「明暗反差」拉大并叠加尺寸脉动。
+    // 早先暗谷只到 0.35（亮暗差不到 3 倍）且周期 6–13s 偏慢，在整层 0.35 不透明度下
+    // 几乎察觉不到；现暗谷压到 0.08–0.10（亮暗差约 10–12 倍），周期 5–10s。
+    // 尺寸同步脉动（峰值 1×、暗谷 0.8–0.9×）：只在暗时微微收缩、亮时回到原大小，
+    // 比只改透明度更像真实大气闪烁——animateTransform 用 additive="sum" 追加到基础
+    // scale 之后（translate → scale → 脉动 scale），不改变星心位置。
+    // 星芒基线 0.32 → 0.40：原尺寸下凹腰臂宽不足 1px，被抗锯齿抹平，实测扣除本底后
+    // 亮度增量只有 +1（等于没画出来），放大到亚像素之上才谈得到闪烁。
+    // 整层压暗 0.35 会吃掉对比，星星组不透明度按 sky.stars 抬 1.25 倍补偿（上限 1）。
+    const starOpacity = Math.min(1, sky.stars * 1.25);
+    parts += '<g fill="#EAFFF8" opacity="' + starOpacity.toFixed(2) + '">' +
       STARS.map(([cx, cy, r], i) => {
-        const dur = 6 + (i * 1.7) % 7;              // 6.0–12.7s
-        const lo = 0.35 + (i % 3) * 0.12;           // 暗到 0.35/0.47/0.59
+        const dur = 5 + ((i * 2.1) % 5);              // 5.0–9.8s
+        const lo = 0.08 + (i % 3) * 0.01;            // 暗谷 0.08/0.09/0.10
+        const sLo = 0.8 + (i % 3) * 0.05;            // 暗谷缩到 0.80/0.85/0.90
         // begin 锁墙钟相位：每分钟重建 SVG 时亮度连续，无突变
         const begin = -(((Date.now() / 1000 + i * 2.3) % dur + dur) % dur);
-        return '<path d="' + SPARKLE_PATH + '" transform="translate(' + cx + ' ' + cy +
-          ') scale(' + (r * 0.32).toFixed(2) + ')">' +
-          '<animate attributeName="opacity" values="1; ' + lo.toFixed(2) + '; 1" keyTimes="0; 0.5; 1"' +
-          ' calcMode="spline" keySplines="0.42 0 0.58 1; 0.42 0 0.58 1" dur="' + dur.toFixed(1) +
-          's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/></path>';
+        const timing = ' keyTimes="0; 0.5; 1" calcMode="spline"' +
+          ' keySplines="0.42 0 0.58 1; 0.42 0 0.58 1" dur="' + dur.toFixed(1) +
+          's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/>';
+        return '<g transform="translate(' + cx + ' ' + cy + ')">' +
+          '<path d="' + SPARKLE_PATH + '" transform="scale(' + (r * 0.4).toFixed(2) + ')">' +
+          '<animate attributeName="opacity" values="1; ' + lo.toFixed(2) + '; 1"' + timing +
+          '<animateTransform attributeName="transform" type="scale" additive="sum"' +
+          ' values="1; ' + sLo.toFixed(2) + '; 1"' + timing +
+          '</path></g>';
       }).join("") +
       "</g>";
   }
@@ -237,7 +251,7 @@ const buildSvg = (h, sky, phase) => {
       parts += phase.illumination > 0.97
         ? '<circle cx="' + cxI + '" cy="' + cyI + '" r="' + r + '" fill="#EDF2FA"/>'
         : '<path d="' + moonLitPath(cx, cy, r, phase.p) + '" fill="#EDF2FA"/>';
-      parts += '<circle cx="' + cxI + '" cy="' + cyI + '" r="' + r + '" fill="none" stroke="#EDF2FA" stroke-opacity="0.18" stroke-width="2"/>';
+      // 亮部已可见时不画轮廓：2px 描边在细月牙时比亮面还抢眼，月牙自身就是边缘
       if (phase.illumination > 0.55) {
         const side = phase.p < 0.5 ? 1 : -1;
         parts += '<circle cx="' + (cx + side * r * 0.38).toFixed(0) + '" cy="' + (cy - r * 0.2).toFixed(0) + '" r="' + (r * 0.18).toFixed(0) + '" fill="#D4DCEA"/>' +
