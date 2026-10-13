@@ -32,8 +32,8 @@ const RIDGE_PATHS = [
 // 星星为四角星芒（✦）：20 单位宽的凹腰十字星路径，按 r 缩放、位置平移
 const SPARKLE_PATH = "M0 -10 Q1.6 -1.6 10 0 Q1.6 1.6 0 10 Q-1.6 1.6 -10 0 Q-1.6 -1.6 0 -10 Z";
 const STARS = [
-  [180, 160, 3], [420, 245, 2], [730, 125, 3], [1260, 175, 2],
-  [1430, 295, 3], [950, 90, 2], [560, 330, 2], [1100, 260, 2],
+  [180, 160, 3], [420, 245, 2], [730, 125, 3, "#A9C7FF"], [1260, 175, 2],
+  [1430, 295, 3, "#D6E4FF"], [950, 90, 2], [560, 330, 2], [1100, 260, 2],
 ];
 
 // ---------- 颜色工具 ----------
@@ -175,29 +175,34 @@ const buildSvg = (h, sky, phase) => {
   const rosy = rosyState(h, sun);
   const clouds = cloudState(h);
   let parts = "";
-  if (sky.stars > 0.02) {
-    // 闪烁（SMIL）：保持原 8 颗星的疏密，只把「明暗反差」拉大并叠加尺寸脉动。
-    // 早先暗谷只到 0.35（亮暗差不到 3 倍）且周期 6–13s 偏慢，在整层 0.35 不透明度下
-    // 几乎察觉不到；现暗谷压到 0.08–0.10（亮暗差约 10–12 倍），周期 5–10s。
-    // 尺寸同步脉动（峰值 1×、暗谷 0.8–0.9×）：只在暗时微微收缩、亮时回到原大小，
-    // 比只改透明度更像真实大气闪烁——animateTransform 用 additive="sum" 追加到基础
-    // scale 之后（translate → scale → 脉动 scale），不改变星心位置。
+  if (sky.stars > 0.1) {
+    // 闪烁（SMIL）：保持原 8 颗星的疏密，把「明暗反差」拉大并叠加尺寸脉动，
+    // 节奏做成不对称的「闪」——暗谷偏前（keyTimes 0/0.3/1）：前 30% 快速变暗、
+    // 后 70% 缓慢回亮，更像大气闪烁的"骤暗渐亮"，而非对称呼吸。
+    // 另挑 2 颗（#2、#7）配 2.4s/3.0s 短周期做快闪点缀，其余 5–10s。
+    // 最暗亮度与暗时收缩都按星芒尺寸 r 分级（大星更亮、收缩更小），不做统一值。
     // 星芒基线 0.32 → 0.40：原尺寸下凹腰臂宽不足 1px，被抗锯齿抹平，实测扣除本底后
     // 亮度增量只有 +1（等于没画出来），放大到亚像素之上才谈得到闪烁。
+    // 门控 0.02 → 0.1：stars 低于 0.1 的黄昏/凌晨，组不透明度×层 0.35 后星星本就不可见，
+    // 却仍跑 16 个 SMIL 动画、持续触发整层重绘——提前不输出省掉无谓开销。
     // 整层压暗 0.35 会吃掉对比，星星组不透明度按 sky.stars 抬 1.25 倍补偿（上限 1）。
     const starOpacity = Math.min(1, sky.stars * 1.25);
-    parts += '<g fill="#EAFFF8" opacity="' + starOpacity.toFixed(2) + '">' +
-      STARS.map(([cx, cy, r], i) => {
-        const dur = 5 + ((i * 2.1) % 5);              // 5.0–9.8s
-        const lo = 0.08 + (i % 3) * 0.01;            // 暗谷 0.08/0.09/0.10
-        const sLo = 0.8 + (i % 3) * 0.05;            // 暗谷缩到 0.80/0.85/0.90
+    parts += '<g opacity="' + starOpacity.toFixed(2) + '">' +
+      STARS.map(([cx, cy, r, tint], i) => {
+        const accent = i === 2 || i === 7;            // 两粒快闪点缀
+        const dur = accent ? 2.4 + (i % 2) * 0.6 : 5 + ((i * 2.1) % 5);
+        // 最暗亮度随 r 抬升：r=2 小星暗到 0.08，r=3 大星最暗也只到 0.16——大星不会暗到底
+        const lo = 0.08 + (r - 2) * 0.08;
+        // 暗时收缩也随 r：大星收缩更小（更接近原大小），小星缩得更明显
+        const sLo = 0.8 + (r - 2) * 0.08;             // r=2→0.80，r=3→0.88
+        const fill = tint || "#EAFFF8";               // 亮星偏白、个别偏蓝，冷白为默认
         // begin 锁墙钟相位：每分钟重建 SVG 时亮度连续，无突变
         const begin = -(((Date.now() / 1000 + i * 2.3) % dur + dur) % dur);
-        const timing = ' keyTimes="0; 0.5; 1" calcMode="spline"' +
+        const timing = ' keyTimes="0; 0.3; 1" calcMode="spline"' +
           ' keySplines="0.42 0 0.58 1; 0.42 0 0.58 1" dur="' + dur.toFixed(1) +
           's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/>';
         return '<g transform="translate(' + cx + ' ' + cy + ')">' +
-          '<path d="' + SPARKLE_PATH + '" transform="scale(' + (r * 0.4).toFixed(2) + ')">' +
+          '<path d="' + SPARKLE_PATH + '" transform="scale(' + (r * 0.4).toFixed(2) + ')" fill="' + fill + '">' +
           '<animate attributeName="opacity" values="1; ' + lo.toFixed(2) + '; 1"' + timing +
           '<animateTransform attributeName="transform" type="scale" additive="sum"' +
           ' values="1; ' + sLo.toFixed(2) + '; 1"' + timing +
