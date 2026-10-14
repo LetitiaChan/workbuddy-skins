@@ -325,6 +325,12 @@ renderer hint `renderer/index.html`. `npm test` should report all tests passing.
   theme listing/dedup, CDP session domains, CLI apply orchestration, video
   pre-provision chunking/dedup/failure degradation, CSS asset inlining, and 🎨 menu
   script structure (teardown, rAF-coalesced layout). Run `npm test`.
+- `scripts/svg-anim-probe.mjs` + `scripts/svg-anim-sample.py` — 通用 SMIL 动效离线验证：
+  把含 SMIL/CSS 动画的 SVG 喂进来，按给定采样点在不同虚拟时刻用无头 Edge 截多帧，
+  Pillow 逐点测峰值亮度增量 Δ 与亮像素面积，输出时序判定动画是否在 CSS
+  background-image（data URL）下运行、相位是否错开、反差是否够。配合
+  `scripts/export-skyclock-svg.mjs`（用 DOM 桩跑真实 skin.js 导出场景 SVG）组成完整
+  「素材 → SVG → 验证」链路；需 Edge/Chrome + 带 Pillow 的 Python。
 - `README.md` — full human-readable documentation.
 
 ## One-line summary for the user
