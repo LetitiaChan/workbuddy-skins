@@ -316,6 +316,17 @@ const SKY_VARS = [
   "--sky-art", "--sky-top", "--sky-mid", "--sky-bot",
   "--sky-panel", "--sky-border", "--sky-shadow", "--sky-art-opacity", "--sky-scheme",
 ];
+// 夜间实底表面变量（右侧详情栏/自动化页等读这些成实底）。skin.css 的 body.dark
+// 钉死的是按午夜天空中间带调的静态快照，天色分钟级流转后与之脱节——面板蓝不变、
+// 天越深越黑，实底面板与主区渐变之间出现色相差。tick 里按当前 sky.mid 加固定
+// 亮度偏移动态重写（午夜时恰好等于静态值），内联 !important 压过样式表静态值；
+// 白天移除、js 降级时回退 skin.css 静态值，主题依然可用
+const SURFACE_VARS = [
+  "--cb-bg-primary", "--cb-bg-secondary", "--cb-bg-tertiary",
+  "--wb-bg-primary", "--wb-bg-secondary",
+  "--wb-home-composer-card-bg", "--wb-home-composer-sub-card-bg",
+  "--wb-quick-actions-fade-bg",
+];
 const tick = () => {
   const d = new Date();
   const h = d.getHours() + d.getMinutes() / 60;
@@ -351,6 +362,23 @@ const tick = () => {
   // 实况面板色钩子：弹窗背景取上方天空派生色（见上方 dialogRgb），
   // 避免直接用 sky.mid（天空中间色）或底部天际色导致色相偏差
   document.body.dataset.workbuddySkinSurface = rgb2hex(dialogRgb);
+  // 夜间实底面板阶梯跟随天色：锚定 sky.mid（面板视觉上贴着天空中间带），
+  // 偏移量 = 原静态值 − 午夜中间带 #0B1526，午夜时结果与 skin.css 静态值完全一致，
+  // 其余时段面板与天色的明暗/色相关系和午夜调校时相同，不再出现"天黑了面板还是那种蓝"
+  if (dark) {
+    const base = hex2rgb(sky.mid);
+    const lift = (d) => rgb2hex(base.map((v, i) => Math.min(255, Math.round(v + d[i]))));
+    st.setProperty("--cb-bg-primary", lift([3, 2, 2]), "important");
+    st.setProperty("--wb-bg-primary", lift([5, 5, 8]), "important");
+    st.setProperty("--cb-bg-secondary", lift([13, 15, 26]), "important");
+    st.setProperty("--wb-bg-secondary", lift([15, 18, 26]), "important");
+    st.setProperty("--cb-bg-tertiary", lift([23, 28, 44]), "important");
+    st.setProperty("--wb-home-composer-card-bg", lift([17, 21, 31]), "important");
+    st.setProperty("--wb-home-composer-sub-card-bg", lift([8, 9, 13]), "important");
+    st.setProperty("--wb-quick-actions-fade-bg", lift([1, 0, 0]), "important");
+  } else {
+    SURFACE_VARS.forEach((p) => st.removeProperty(p));
+  }
   writeMode(dark);
 };
 
@@ -386,6 +414,7 @@ return function teardown() {
   observer.disconnect();
   const st = document.body.style;
   SKY_VARS.forEach((p) => st.removeProperty(p));
+  SURFACE_VARS.forEach((p) => st.removeProperty(p));
   delete document.body.dataset.workbuddySkinTone;
   delete document.body.dataset.workbuddySkinSurface;
 };
