@@ -48,11 +48,11 @@ body::after {
 }
 body::before {
   background-image: var(--sky-art, url("./sky.svg"));
-  opacity: calc(var(--sky-art-opacity, 0.3) * var(--sky-a-on, 1));
+  opacity: calc(var(--sky-art-opacity, 0.22) * var(--sky-a-on, 1));
 }
 body::after {
   background-image: var(--sky-art-b, none);
-  opacity: calc(var(--sky-art-opacity, 0.3) * var(--sky-b-on, 0));
+  opacity: calc(var(--sky-art-opacity, 0.22) * var(--sky-b-on, 0));
 }
 
 body [role="dialog"] {
@@ -66,36 +66,39 @@ body [role="dialog"] {
   body [role="dialog"] { backdrop-filter: none; }
 }
 
-/* 夜间对比度修正：应用原生深色表面是纯灰（#1f1f1f/#292929 系），与夜空蓝调
-   色相脱节且明度贴近天色，卡片/胶囊糊在背景里。深色时段（skin.js 写 body.dark）
-   把表面变量整体换成夜空蓝阶梯——逐级抬亮让浮层从夜空分离，文字次级色同步带蓝；
-   浅色时段保持原生 IDE Light 不动。侧栏变量不钉（原生规则 !important 引用作实底，
-   钉不透明会在磨砂侧栏冒色块）。
-   注意：skin.js 运行时会按当前天空中带色（sky.mid）动态重写下列实底变量（午夜时
-   与这里的静态值一致，其余时段跟随天色流转），此处的静态值仅作 js 降级时的兜底。 */
+/* 夜间对比度修正：应用原生深色表面是纯灰（#1f1f1f/#141414 系），与夜空蓝调色相脱节。
+   js 运行时由 skin.js 扫描全部原生令牌、给所有深色中性灰统一加天色色相偏移（画布系
+   --wb-home-bg-* 与卡片系 --wb-bg-*/--cb-bg-* 同一变换，视图间无灰/蓝跳变），
+   下方实底静态值仅在 js 降级（无 data-sky-js）时兜底：同样按「原生值同值 → 同色」
+   映射（#1f1f1f 系 → #191e26，#141414 系 → #0e131b，即午夜色相 ×0.5）。半透明悬停/次级文字色两种
+   情况都生效。浅色时段保持原生 IDE Light 不动。 */
 body.dark {
-  --cb-bg-primary: #0e1728 !important;
-  --cb-bg-secondary: #182440 !important;
-  --cb-bg-tertiary: #223152 !important;
   --cb-hover-bg: rgba(160, 190, 235, 0.08) !important;
   --cb-text-secondary: rgba(226, 236, 252, 0.72) !important;
-  --wb-bg-primary: #101a2e !important;
-  --wb-bg-secondary: #1a2740 !important;
   --wb-bg-hover: rgba(160, 190, 235, 0.08) !important;
   --wb-bg-active: rgba(160, 190, 235, 0.16) !important;
   --wb-text-medium: rgba(226, 236, 252, 0.72) !important;
-  --wb-home-composer-card-bg: #1c2a45 !important;
-  --wb-home-composer-sub-card-bg: #131e33 !important;
-  --wb-quick-actions-fade-bg: #0c1526 !important;
+}
+body.dark:not([data-sky-js]) {
+  --cb-bg-primary: #0a101b !important;
+  --cb-bg-secondary: #111824 !important;
+  --cb-bg-tertiary: #18202e !important;
+  --wb-bg-primary: #191e26 !important;
+  --wb-bg-secondary: #232830 !important;
+  --wb-home-bg-primary: #191e26 !important;
+  --wb-home-bg-secondary: #0e131b !important;
+  --wb-sidebar-bg: #191e26 !important;
+  --cb-panel-bg-primary: #191e26 !important;
+  --cr-bg-canvas: #0e131b !important;
+  --wb-home-composer-card-bg: #242931 !important;
+  --wb-home-composer-sub-card-bg: #191e26 !important;
+  --wb-quick-actions-fade-bg: #0e131b !important;
 }
 
-/* 右侧详情栏包裹层：原生读 --wb-sidebar-bg（#1f1f1f 灰实底），与内容层
-   （.detail-new-tab-landing 读 --wb-bg-primary 海军蓝）相邻时出现灰/蓝色块跳变。
-   钉为主题海军蓝表面变量——js 运行时随 sky.mid 动态阶梯走，js 降级时用静态值。
-   只钉这两个包裹层、不碰 --wb-sidebar-bg 本体：左侧栏原生规则大量 !important
-   引用它作实底，改变量会在磨砂侧栏冒色块 */
-body.dark .detail-layout,
-body.dark .detail-main__body {
-  background-color: var(--wb-bg-primary) !important;
+/* 页面级底色统一：原生右侧详情栏（.detail-*，读 --wb-bg-primary/--wb-sidebar-bg）与
+   无对话任务页（.wb-home-route--standalone，读 --wb-bg-primary）比会话/新建任务页画布
+   （--wb-home-bg-secondary）高一级明度，切视图时整片变亮。这几个整页底板钉到画布色，
+   卡片/弹层仍用各自令牌保留层次。令牌已统一着色，此处只对齐明度级别 */
+body.dark :is(.wb-home-route--standalone, .detail-panel, .detail-layout, .detail-main__body, .detail-new-tab-landing) {
+  background-color: var(--wb-home-bg-secondary) !important;
 }
-

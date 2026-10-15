@@ -340,39 +340,113 @@ const SKY_VARS = [
   "--sky-top", "--sky-mid", "--sky-bot",
   "--sky-panel", "--sky-border", "--sky-shadow", "--sky-art-opacity", "--sky-scheme",
 ];
-// 夜间实底表面变量（右侧详情栏/自动化页等读这些成实底）。skin.css 的 body.dark
-// 钉死的是按午夜天空中间带调的静态快照，天色分钟级流转后与之脱节——面板蓝不变、
-// 天越深越黑，实底面板与主区渐变之间出现色相差。tick 里按当前 sky.mid 加固定
-// 亮度偏移动态重写（午夜时恰好等于静态值），内联 !important 压过样式表静态值；
-// 白天移除、js 降级时回退 skin.css 静态值，主题依然可用
-const SURFACE_VARS = [
-  "--cb-bg-primary", "--cb-bg-secondary", "--cb-bg-tertiary",
-  "--wb-bg-primary", "--wb-bg-secondary",
-  "--wb-home-composer-card-bg", "--wb-home-composer-sub-card-bg",
-  "--wb-quick-actions-fade-bg",
-];
-// 与 skin.css body.dark 静态值严格一致——黄昏过渡期间按 track 从它们渐变到动态值
-const SURFACE_STATIC = {
-  "--cb-bg-primary": "#0E1728",
-  "--cb-bg-secondary": "#182440",
-  "--cb-bg-tertiary": "#223152",
-  "--wb-bg-primary": "#101A2E",
-  "--wb-bg-secondary": "#1A2740",
-  "--wb-home-composer-card-bg": "#1C2A45",
-  "--wb-home-composer-sub-card-bg": "#131E33",
-  "--wb-quick-actions-fade-bg": "#0C1526",
+// ---------- 中性灰表面统一着色 ----------
+// 原生深色表面分两套令牌：画布系（--wb-home-bg-*/--cr-bg-canvas/--wb-sidebar-bg/--cb-tab-*，
+// 会话页/新建任务页/侧栏底）与卡片系（--wb-bg-*/--cb-bg-*，右侧详情栏/无对话任务页/弹层），
+// 各视图各取一套作底。只给其中几个令牌换色，视图切换必然在灰/蓝之间跳变——逐个容器
+// 钉色永远补不完。改为令牌层统一处理：扫描全部样式表的自定义属性，凡深色模式下解析为
+// 不透明、近中性、偏暗的灰（原生表面阶梯），一律加同一个天色色相偏移向量。
+// 偏移零均值（只加色相不改明度），原生明度阶梯原样保留，所有视图同一色调。
+// 色相取自天空中带（sky.mid）：黄昏/黎明 sky.mid 偏粉紫，按 track 退回静态午夜海军蓝，
+// 并对偏移分量限幅，避免面板被染成高饱和品红。
+const NEUTRAL_MAX_SPREAD = 10;   // max-min ≤ 10 视为中性灰（原生 #1e2127 这类微冷灰也算）
+const NEUTRAL_MAX_LEVEL = 80;    // 最亮分量 ≤ 80 才算深色表面（排除文字/亮色描边）
+// 着色强度：整屏场景层（--sky-art-opacity）已叠一层天色，底色再满额加色相会双重偏蓝，
+// 只取天色色相的小部分并限幅，底色呈带一丝蓝调的黑灰而非饱和海军蓝
+const TINT_STRENGTH = 0.3;
+const TINT_CAP = 5;              // 色相偏移单分量上限
+const TOKEN_EXCLUDE = /^--sky-|text|fg|foreground|icon|shadow|mask|overlay/i;
+const chromaOf = (rgb) => {
+  const m = (rgb[0] + rgb[1] + rgb[2]) / 3;
+  return rgb.map((v) => v - m);
 };
-// 浅色时段（IDE Light）原生表面近似值：翻转过渡带内从这些值平滑渐变到暗侧阶梯，
-// 使类名翻转瞬间表面色已经到位——翻转本身在视觉上不可见
-const SURFACE_LIGHT = {
-  "--cb-bg-primary": "#FFFFFF",
-  "--cb-bg-secondary": "#F5F6F8",
-  "--cb-bg-tertiary": "#EBEDF2",
-  "--wb-bg-primary": "#FFFFFF",
-  "--wb-bg-secondary": "#F5F6F8",
-  "--wb-home-composer-card-bg": "#F7F8FA",
-  "--wb-home-composer-sub-card-bg": "#FFFFFF",
-  "--wb-quick-actions-fade-bg": "#FFFFFF",
+const STATIC_TINT = chromaOf(hex2rgb("#0B1526")); // 午夜天空中带的色相
+// 计算后的自定义属性值 → 不透明 rgb；非纯色（color-mix/渐变/半透明）返回 null
+const parseOpaque = (v) => {
+  v = v.trim();
+  let m = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(v);
+  if (m) {
+    let h = m[1];
+    if (h.length === 3) h = h.replace(/./g, "$&$&");
+    if (h.length === 8 && h.slice(6).toLowerCase() !== "ff") return null;
+    return hex2rgb("#" + h.slice(0, 6));
+  }
+  m = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*(?:[,/]\s*([\d.]+%?))?\s*\)$/i.exec(v);
+  if (m && (m[4] === undefined || parseFloat(m[4]) >= (m[4].endsWith("%") ? 100 : 1))) return [+m[1], +m[2], +m[3]];
+  return null;
+};
+const isDarkNeutral = (rgb) =>
+  Math.max(...rgb) - Math.min(...rgb) <= NEUTRAL_MAX_SPREAD && Math.max(...rgb) <= NEUTRAL_MAX_LEVEL;
+// 令牌名扫描（不含本主题样式表）：样式表数量变化（懒加载 chunk）时重扫
+let tokenNames = [];
+let sheetCount = -1;
+const scanTokenNames = () => {
+  const sheets = document.styleSheets;
+  if (!sheets || sheets.length === sheetCount) return false;
+  sheetCount = sheets.length;
+  const set = new Set();
+  const walk = (rules) => {
+    for (const r of rules) {
+      if (r.cssRules) walk(r.cssRules);
+      const s = r.style;
+      if (s) for (let i = 0; i < s.length; i++) if (s[i].startsWith("--") && !TOKEN_EXCLUDE.test(s[i])) set.add(s[i]);
+    }
+  };
+  for (const ss of sheets) {
+    if (ss.ownerNode && ss.ownerNode.id === "workbuddy-skin-style") continue;
+    try { walk(ss.cssRules); } catch { /* 跨域样式表不可读，跳过 */ }
+  }
+  tokenNames = [...set];
+  return true;
+};
+// 原生表面值缓存（按明暗分档）：读取前先撤掉本脚本写的内联值，读到的就是原生计算值
+// （skin.css 的静态兜底挂在 :not([data-sky-js]) 下，js 运行时不参与）。撤与写在同一任务内
+// 完成，不会出帧。浅色档存全部令牌，供过渡带内从浅色原生值渐变；持久化到 localStorage，
+// 跨会话首个过渡带即可平滑
+const CACHE_KEY = "workbuddy-sky-clock:native-surfaces";
+let nativeCache = { dark: null, light: null };
+try {
+  const saved = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+  if (saved && typeof saved === "object") nativeCache = { dark: saved.dark || null, light: saved.light || null };
+} catch { /* 无 localStorage（测试桩/受限环境） */ }
+let cacheFresh = { dark: false, light: false };
+const applied = new Set();
+const clearApplied = () => {
+  const st = document.body.style;
+  applied.forEach((p) => st.removeProperty(p));
+  applied.clear();
+};
+const readNative = (dark) => {
+  if (typeof getComputedStyle !== "function") return;
+  const rescanned = scanTokenNames();
+  const mode = dark ? "dark" : "light";
+  if (cacheFresh[mode] && !rescanned) return;
+  clearApplied();
+  const cs = getComputedStyle(document.body);
+  const out = {};
+  for (const n of tokenNames) {
+    const rgb = parseOpaque(cs.getPropertyValue(n));
+    if (rgb && (!dark || isDarkNeutral(rgb))) out[n] = rgb;
+  }
+  nativeCache[mode] = out;
+  cacheFresh = rescanned ? { dark: false, light: false, [mode]: true } : { ...cacheFresh, [mode]: true };
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(nativeCache)); } catch { /* 忽略 */ }
+};
+// 按当前明暗与过渡带进度写入全部中性表面令牌（内联 !important 压过原生规则）
+const applySurfaces = (dark, flipT, tint) => {
+  readNative(dark);
+  const darkNative = nativeCache.dark, lightNative = nativeCache.light;
+  if (!darkNative || flipT <= 0) { clearApplied(); return; }
+  const st = document.body.style;
+  for (const n in darkNative) {
+    const tinted = darkNative[n].map((v, i) => v + tint[i]);
+    // 过渡带内从浅色原生值渐变（无浅色档时深色侧直接到位；浅色模式下无浅色值则不动）
+    const light = lightNative && lightNative[n];
+    if (!light && !dark) continue;
+    const rgb = light && flipT < 1 ? light.map((v, i) => lerp(v, tinted[i], flipT)) : tinted;
+    st.setProperty(n, rgb2hex(rgb), "important");
+    applied.add(n);
+  }
 };
 // 明暗翻转窗口：天空中带亮度 L ∈ [0.20, 0.40] 为过渡带，flipT 0=纯亮 1=纯暗。
 // 带内所有主题自有颜色连续插值；类名翻转带迟滞（flipT≥0.98 转暗、≤0.02 转亮），
@@ -429,9 +503,10 @@ const tick = () => {
   st.setProperty("--sky-border", rgba(bc, lerp(0.16, 0.22, flipT)));
   const sc = [60, 110, 170].map((v, i) => lerp(v, [20, 50, 110][i], flipT));
   st.setProperty("--sky-shadow", rgba(sc, lerp(0.18, 0.28, flipT)));
-  // 夜间场景（星月/山脊剪影）需要存在感，但整屏浮层压在文字上方，过强会蒙雾发糊——
-  // 0.22（白天）→ 0.35（深夜）随 flipT 渐变，保证星月可见又不糊字
-  st.setProperty("--sky-art-opacity", lerp(0.22, 0.35, flipT).toFixed(3));
+  // 夜间场景（星月/山脊剪影）需要存在感，但整屏浮层压在文字上方，过强会蒙雾发糊、
+  // 白字对比度被吃掉（0.35 时白字亮度仅剩 ~65%，实测「灰蒙蒙」）——
+  // 0.18（白天）→ 0.24（深夜）随 flipT 渐变，星月仍可辨而文字保持清晰
+  st.setProperty("--sky-art-opacity", lerp(0.18, 0.24, flipT).toFixed(3));
   st.setProperty("--sky-scheme", dark ? "dark" : "light");
   // 实况色调钩子：主题选择弹窗打开时读它刷新背景/选中描边——天色每 30s 流转，
   // theme.json 里的静态 surface/accent 只是快照；mid 是当前时刻天空中间色，
@@ -440,37 +515,16 @@ const tick = () => {
   // 实况面板色钩子：弹窗背景取上方天空派生色（见上方 dialogRgb），
   // 避免直接用 sky.mid（天空中间色）或底部天际色导致色相偏差
   document.body.dataset.workbuddySkinSurface = rgb2hex(dialogRgb);
-  // 夜间实底面板阶梯跟随天色：锚定 sky.mid（面板视觉上贴着天空中间带），
-  // 偏移量 = 原静态值 − 午夜中间带 #0B1526，午夜时结果与 skin.css 静态值完全一致。
-  // 但只在真正入夜后跟随：黄昏/黎明（sky.mid 偏粉紫、亮度仍高，如 17.6 帧 #C96B80）
-  // 若直接加偏移会把面板抬成高饱和品红，与磨砂侧栏/详情栏明显脱节——按天空中带亮度
-  // 在静态与动态间平滑过渡：L(mid) ≥0.15 全静态（skin.css 海军蓝），≤0.05 全动态
-  // 实底面板阶梯全程连续：过渡带内先从浅色原生值渐变到暗侧静态值（类名翻转时已就位），
-  // 入夜后再按 track 从静态值渐变到跟随 sky.mid 的动态值（见上方注释）。
-  // 三段链：SURFACE_LIGHT →(flipT)→ SURFACE_STATIC →(track)→ dynamic
-  const track = Math.min(1, Math.max(0, (0.15 - lum) / 0.10));
-  if (flipT > 0) {
-    const base = hex2rgb(sky.mid);
-    const lift = (d) => rgb2hex(base.map((v, i) => Math.min(255, Math.round(v + d[i]))));
-    const dynamic = {
-      "--cb-bg-primary": lift([3, 2, 2]),
-      "--wb-bg-primary": lift([5, 5, 8]),
-      "--cb-bg-secondary": lift([13, 15, 26]),
-      "--wb-bg-secondary": lift([15, 18, 26]),
-      "--cb-bg-tertiary": lift([23, 28, 44]),
-      "--wb-home-composer-card-bg": lift([17, 21, 31]),
-      "--wb-home-composer-sub-card-bg": lift([8, 9, 13]),
-      "--wb-quick-actions-fade-bg": lift([1, 0, 0]),
-    };
-    for (const k of SURFACE_VARS) {
-      const darkSide = lerpHex(SURFACE_STATIC[k], dynamic[k], track);
-      st.setProperty(k, lerpHex(SURFACE_LIGHT[k], darkSide, flipT), "important");
-    }
-  } else {
-    SURFACE_VARS.forEach((p) => st.removeProperty(p));
-  }
   writeMode(dark);
+  // 中性表面色相：入夜（track→1）跟随 sky.mid，黄昏/黎明（L(mid)≥0.15）退回静态午夜海军蓝
+  const track = Math.min(1, Math.max(0, (0.15 - lum) / 0.10));
+  const raw = STATIC_TINT.map((v, i) => lerp(v, chromaOf(hex2rgb(sky.mid))[i], track) * TINT_STRENGTH);
+  const peak = Math.max(...raw.map(Math.abs));
+  const tint = peak > TINT_CAP ? raw.map((v) => (v * TINT_CAP) / peak) : raw;
+  lastSurface = [dark, flipT, tint];
+  applySurfaces(dark, flipT, tint);
 };
+let lastSurface = null;
 
 // 应用异步回写模式时重新断言（与菜单 modeObserver 同策略：不一致才重写）
 const observer = new MutationObserver(() => {
@@ -479,6 +533,21 @@ const observer = new MutationObserver(() => {
 });
 observer.observe(document.body, { attributes: true, attributeFilter: ["class", "data-vscode-theme-kind", "data-vscode-theme-name"] });
 observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+// 懒加载的样式 chunk（如助理/同事页）带来新令牌：head 增删样式节点后补扫并重写（微任务合并）
+let sheetPending = false;
+const sheetObserver = new MutationObserver(() => {
+  if (sheetPending || !lastSurface) return;
+  sheetPending = true;
+  Promise.resolve().then(() => {
+    sheetPending = false;
+    applySurfaces(...lastSurface);
+  });
+});
+if (document.head) sheetObserver.observe(document.head, { childList: true });
+
+// skin.css 的实底表面静态兜底仅在 js 未运行时生效（:not([data-sky-js])），js 运行时由
+// applySurfaces 从原生值统一着色
+document.body.dataset.skyJs = "1";
 
 // ---------- 定时：半分钟级刷新（对齐墙钟半分钟）；页面重新可见时补算（节流兜底） ----------
 // 每 30s 重建一次场景 SVG：单次开销 ≈ 字符串拼接 <1ms + 整屏 SVG 重栅格化 ~5ms，
@@ -502,9 +571,11 @@ return function teardown() {
   if (interval !== null) clearInterval(interval);
   document.removeEventListener("visibilitychange", onVisible);
   observer.disconnect();
+  sheetObserver.disconnect();
   const st = document.body.style;
   SKY_VARS.forEach((p) => st.removeProperty(p));
-  SURFACE_VARS.forEach((p) => st.removeProperty(p));
+  clearApplied();
+  delete document.body.dataset.skyJs;
   delete document.body.dataset.workbuddySkinTone;
   delete document.body.dataset.workbuddySkinSurface;
 };
