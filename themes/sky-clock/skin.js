@@ -327,6 +327,17 @@ const SURFACE_VARS = [
   "--wb-home-composer-card-bg", "--wb-home-composer-sub-card-bg",
   "--wb-quick-actions-fade-bg",
 ];
+// 与 skin.css body.dark 静态值严格一致——黄昏过渡期间按 track 从它们渐变到动态值
+const SURFACE_STATIC = {
+  "--cb-bg-primary": "#0E1728",
+  "--cb-bg-secondary": "#182440",
+  "--cb-bg-tertiary": "#223152",
+  "--wb-bg-primary": "#101A2E",
+  "--wb-bg-secondary": "#1A2740",
+  "--wb-home-composer-card-bg": "#1C2A45",
+  "--wb-home-composer-sub-card-bg": "#131E33",
+  "--wb-quick-actions-fade-bg": "#0C1526",
+};
 const tick = () => {
   const d = new Date();
   const h = d.getHours() + d.getMinutes() / 60;
@@ -363,19 +374,27 @@ const tick = () => {
   // 避免直接用 sky.mid（天空中间色）或底部天际色导致色相偏差
   document.body.dataset.workbuddySkinSurface = rgb2hex(dialogRgb);
   // 夜间实底面板阶梯跟随天色：锚定 sky.mid（面板视觉上贴着天空中间带），
-  // 偏移量 = 原静态值 − 午夜中间带 #0B1526，午夜时结果与 skin.css 静态值完全一致，
-  // 其余时段面板与天色的明暗/色相关系和午夜调校时相同，不再出现"天黑了面板还是那种蓝"
+  // 偏移量 = 原静态值 − 午夜中间带 #0B1526，午夜时结果与 skin.css 静态值完全一致。
+  // 但只在真正入夜后跟随：黄昏/黎明（sky.mid 偏粉紫、亮度仍高，如 17.6 帧 #C96B80）
+  // 若直接加偏移会把面板抬成高饱和品红，与磨砂侧栏/详情栏明显脱节——按天空中带亮度
+  // 在静态与动态间平滑过渡：L(mid) ≥0.15 全静态（skin.css 海军蓝），≤0.05 全动态
+  const track = Math.min(1, Math.max(0, (0.15 - luminance(sky.mid)) / 0.10));
   if (dark) {
     const base = hex2rgb(sky.mid);
     const lift = (d) => rgb2hex(base.map((v, i) => Math.min(255, Math.round(v + d[i]))));
-    st.setProperty("--cb-bg-primary", lift([3, 2, 2]), "important");
-    st.setProperty("--wb-bg-primary", lift([5, 5, 8]), "important");
-    st.setProperty("--cb-bg-secondary", lift([13, 15, 26]), "important");
-    st.setProperty("--wb-bg-secondary", lift([15, 18, 26]), "important");
-    st.setProperty("--cb-bg-tertiary", lift([23, 28, 44]), "important");
-    st.setProperty("--wb-home-composer-card-bg", lift([17, 21, 31]), "important");
-    st.setProperty("--wb-home-composer-sub-card-bg", lift([8, 9, 13]), "important");
-    st.setProperty("--wb-quick-actions-fade-bg", lift([1, 0, 0]), "important");
+    const dynamic = {
+      "--cb-bg-primary": lift([3, 2, 2]),
+      "--wb-bg-primary": lift([5, 5, 8]),
+      "--cb-bg-secondary": lift([13, 15, 26]),
+      "--wb-bg-secondary": lift([15, 18, 26]),
+      "--cb-bg-tertiary": lift([23, 28, 44]),
+      "--wb-home-composer-card-bg": lift([17, 21, 31]),
+      "--wb-home-composer-sub-card-bg": lift([8, 9, 13]),
+      "--wb-quick-actions-fade-bg": lift([1, 0, 0]),
+    };
+    for (const k of SURFACE_VARS) {
+      st.setProperty(k, lerpHex(SURFACE_STATIC[k], dynamic[k], track), "important");
+    }
   } else {
     SURFACE_VARS.forEach((p) => st.removeProperty(p));
   }
