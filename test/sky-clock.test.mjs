@@ -237,6 +237,18 @@ test("sky-clock 白云：漂移带 y 沉浮分量与非对称 keySplines（模�
   assert.ok(!svg.includes('keySplines="0.42 0 0.58 1; 0.42 0 0.58 1"'), "旧对称 keySplines 应已移除");
 });
 
+test("sky-clock 白云：簇内 blob 叠加 additive bob（差异变形），数量与相位正确", () => {
+  const svg = lib.buildSvg(12, lib.frameAt(12), lib.moonPhase(Date.now()));
+  const bobs = svg.match(/<animateTransform[^>]*additive="sum"[^>]*\/>/g) || [];
+  assert.equal(bobs.length, 12, `三簇 × 四 blob 应有 12 条 additive bob，实际 ${bobs.length}`);
+  assert.ok(bobs.every((b) => b.includes('dur="')), "每条 bob 应有 dur");
+  const durs = new Set(bobs.map((b) => /dur="(\d+)s"/.exec(b)[1]));
+  assert.ok(durs.size >= 4, `bob 周期应错开（≥4 种），实际 ${[...durs].join(",")}`);
+  const begins = new Set(bobs.map((b) => /begin="([-\d.]+)s"/.exec(b)[1]));
+  assert.ok(begins.size > 1, "bob 相位应错开，不应全部同相位");
+  assert.ok(bobs.every((b) => b.includes('keySplines="0.4 0 0.6 1; 0.4 0 0.6 1"')), "bob 应使用对称缓动（轻柔呼吸）");
+});
+
 test("sky-clock 减弱动效：命中 prefers-reduced-motion 时不输出云漂移与星闪 SMIL", () => {
   const saved = globalThis.window;
   globalThis.window = { matchMedia: () => ({ matches: true }) };

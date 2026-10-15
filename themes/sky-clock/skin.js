@@ -155,6 +155,20 @@ const cloudDriftAnim = (i) => {
     ' ' + y + '; 0 0" keyTimes="0; 0.5; 1" calcMode="spline" keySplines="0.3 0 0.7 1; 0.42 0 1 1" dur="' +
     dur + 's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/>';
 };
+// 簇内差异微动：真实积云边飘边鼓，单个 blob 在整簇漂移之上叠加 additive="sum" 的
+// 微小 bob（幅度 1–2px，各 blob 周期/相位错开），让云在漂移中缓慢变形而非刚体平移。
+// [x 幅度, y 幅度, 周期 s]；相位由簇序 ci 与 blob 序 bi 共同错开。
+// begin 同漂移一样锁定墙钟相位，30s 重建 SVG 时位置严格连续
+const CLOUD_BLOB_BOB = [[1.6, 1.2, 13], [1.2, 1.8, 17], [2, 1.4, 11], [1.4, 2, 19]];
+const cloudBlobBob = (ci, bi) => {
+  if (reduceMotion) return ""; // 减弱动效：不输出 blob 微动 SMIL
+  const [ax, ay, dur] = CLOUD_BLOB_BOB[bi % CLOUD_BLOB_BOB.length];
+  const phase = ci * 5.3 + bi * 2.7; // 簇间/簇内相位错开，避免三簇同步呼吸
+  const begin = -(((Date.now() / 1000 + phase) % dur + dur) % dur);
+  return '<animateTransform attributeName="transform" type="translate" additive="sum" values="0 0; ' +
+    ax + ' ' + ay + '; 0 0" keyTimes="0; 0.5; 1" calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1" dur="' +
+    dur + 's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/>';
+};
 const cloudState = (h) => {
   const strength = gauss(h, 12.5, 2.6);
   if (strength < 0.05) return null;
@@ -245,10 +259,10 @@ const buildSvg = (h, sky, phase) => {
     parts += '<g class="sky-clouds" opacity="' + clouds.strength.toFixed(2) + '">' +
       CLOUDS.map((c, ci) =>
         '<g>' + cloudDriftAnim(ci) +
-        CLOUD_BLOBS.map(([dx, dy, rx, ry, top]) =>
+        CLOUD_BLOBS.map(([dx, dy, rx, ry, top], bi) =>
           '<ellipse cx="' + (c.x + dx * c.s).toFixed(0) + '" cy="' + (c.y + dy * c.s).toFixed(0) +
           '" rx="' + (rx * c.s).toFixed(0) + '" ry="' + (ry * c.s).toFixed(0) +
-          '" fill="' + (top ? clouds.fill : clouds.shade) + '"/>'
+          '" fill="' + (top ? clouds.fill : clouds.shade) + '">' + cloudBlobBob(ci, bi) + '</ellipse>'
         ).join("") + "</g>"
       ).join("") +
       "</g>";
