@@ -727,7 +727,15 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     versionEl.textContent = data.version;
     versionEl.style.cssText = "flex:none;margin-left:6px;font-size:11px;font-weight:500;opacity:.45;white-space:nowrap;";
   }
-  header.append(titleEl, ...(versionEl ? [versionEl] : []), searchInput, randomBtn, closeBtn);
+  // GitHub Star 入口：版本号右侧的小胶囊，点击新窗口打开仓库页；颜色走 currentColor 系跟随弹窗主题，星标用 accent 点缀
+  const starEl = document.createElement("span");
+  starEl.textContent = "\\u2605 Star";
+  starEl.title = "\\u5728 GitHub \\u4e0a\\u7ed9\\u9879\\u76ee\\u70b9 Star";
+  starEl.style.cssText = "flex:none;margin-left:8px;padding:1px 8px;border-radius:999px;border:1px solid color-mix(in srgb, currentColor 18%, transparent);font-size:11px;font-weight:600;line-height:18px;white-space:nowrap;cursor:pointer;opacity:.75;user-select:none;";
+  starEl.addEventListener("mouseenter", () => { starEl.style.opacity = "1"; starEl.style.borderColor = accentCss(.7); starEl.style.background = accentCss(.12); });
+  starEl.addEventListener("mouseleave", () => { starEl.style.opacity = ".75"; starEl.style.borderColor = "color-mix(in srgb, currentColor 18%, transparent)"; starEl.style.background = "transparent"; });
+  starEl.addEventListener("click", () => window.open("https://github.com/LetitiaChan/workbuddy-skins", "_blank", "noopener"));
+  header.append(titleEl, ...(versionEl ? [versionEl] : []), starEl, searchInput, randomBtn, closeBtn);
   dialog.append(header, dialogBody);
 
   // 分类小节：标题行（extra 挂槽位计数等附加信息）+ 卡片网格，挂进滚动 body

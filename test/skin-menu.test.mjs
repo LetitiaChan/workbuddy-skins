@@ -626,6 +626,10 @@ test("版本号展示：displayVersion 进 payload 并在标题旁渲染；空/�
   assert.ok(withVersion.includes("header.append(titleEl, ...(versionEl ? [versionEl] : [])"));
   assert.ok(withVersion.includes("flex:none;margin-left:6px"));
 
+  // GitHub Star 入口紧随版本号右侧、搜索框之前
+  assert.ok(withVersion.includes("header.append(titleEl, ...(versionEl ? [versionEl] : []), starEl, searchInput"));
+  assert.ok(withVersion.includes("https://github.com/LetitiaChan/workbuddy-skins"));
+
   assert.equal(payloadOf(build()).version, null);
   assert.equal(payloadOf(build({ displayVersion: "" })).version, null);
   assert.equal(payloadOf(build({ displayVersion: 123 })).version, null);
