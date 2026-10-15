@@ -37,6 +37,21 @@ const STARS = [
   [1430, 295, 3, "#D6E4FF"], [950, 90, 2], [560, 330, 2], [1100, 260, 2],
 ];
 
+// ---------- 环境探测 ----------
+// 系统偏好「减弱动效」时不输出云漂移与星闪的 SMIL 节点（云/星静态保留，天色/日月照常流转）。
+// typeof window 短路 + try/catch 双保险：Node 端跑测试（新 Function/lib eval）时
+// window 未定义，裸调 window.matchMedia 会抛 ReferenceError；旧环境或 matchMedia
+// 被劫持时同样兜底为「不降级」。写法与菜单的 reducedMotion（skin-menu.mjs）一致。
+const reducedMotion = () => {
+  try {
+    return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+};
+// 顶部只探一次（该偏好整场会话基本不变）：命中时 buildSvg 不输出云漂移与星闪 SMIL
+const reduceMotion = reducedMotion();
+
 // ---------- 颜色工具 ----------
 const lerp = (a, b, t) => a + (b - a) * t;
 const hex2rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -124,16 +139,20 @@ const CLOUDS = [
 const CLOUD_BLOBS = [
   [0, 15, 68, 18, 0], [0, 0, 58, 26, 1], [-52, 10, 40, 20, 1], [55, 12, 44, 21, 1],
 ];
-// 微动：每簇云缓慢水平漂移（SMIL，背景图内仍生效），周期长、幅度小、速度错开，
-// 近似积云随风缓移；[x 往返幅度, 周期 s, 相位偏移 s]。
+// 微动：每簇云缓慢漂移（SMIL，背景图内仍生效），周期长、幅度小、速度错开，
+// 近似积云随风缓移；[x 往返幅度, y 沉浮分量, 周期 s, 相位偏移 s]——y 给云加 3–5px
+// 轻微「浮沉」，漂移不再是贴纸平移。
 // begin 锁定墙钟相位（-(epoch+dur-offset) % dur）：每 30s 重建 SVG 时 SMIL 时间线虽重启，
 // 但相位由当前时间推出，位置在重建前后严格连续，不会出现跳变/闪回。
-const CLOUD_DRIFT = [[36, 75, 0], [-30, 95, -30], [26, 115, -70]];
+const CLOUD_DRIFT = [[36, 4, 75, 0], [-30, -3, 95, -30], [26, 3, 115, -70]];
 const cloudDriftAnim = (i) => {
-  const [amp, dur, phase] = CLOUD_DRIFT[i % CLOUD_DRIFT.length];
+  if (reduceMotion) return ""; // 减弱动效：云层静态保留，不输出漂移 SMIL
+  const [amp, y, dur, phase] = CLOUD_DRIFT[i % CLOUD_DRIFT.length];
   const begin = -(((Date.now() / 1000 + phase) % dur + dur) % dur);
+  // keySplines 非对称：去程更慢（0.3 0 0.7 1，峰值速度低）、回程略快（0.42 0 1 1，
+  // ease-in 加速推回），模拟阵风而非机械往返
   return '<animateTransform attributeName="transform" type="translate" values="0 0; ' + amp +
-    ' 0; 0 0" keyTimes="0; 0.5; 1" calcMode="spline" keySplines="0.42 0 0.58 1; 0.42 0 0.58 1" dur="' +
+    ' ' + y + '; 0 0" keyTimes="0; 0.5; 1" calcMode="spline" keySplines="0.3 0 0.7 1; 0.42 0 1 1" dur="' +
     dur + 's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/>';
 };
 const cloudState = (h) => {
@@ -202,12 +221,14 @@ const buildSvg = (h, sky, phase) => {
         const timing = ' keyTimes="0; 0.3; 1" calcMode="spline"' +
           ' keySplines="0.42 0 0.58 1; 0.42 0 0.58 1" dur="' + dur.toFixed(1) +
           's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/>';
-        return '<g transform="translate(' + cx + ' ' + cy + ')">' +
-          '<path d="' + SPARKLE_PATH + '" transform="scale(' + (r * 0.4).toFixed(2) + ')" fill="' + fill + '">' +
+        // 减弱动效：星芒静态保留（只画 path 本体，不输出明暗/尺寸 SMIL）
+        const anim = reduceMotion ? "" :
           '<animate attributeName="opacity" values="1; ' + lo.toFixed(2) + '; 1"' + timing +
           '<animateTransform attributeName="transform" type="scale" additive="sum"' +
-          ' values="1; ' + sLo.toFixed(2) + '; 1"' + timing +
-          '</path></g>';
+          ' values="1; ' + sLo.toFixed(2) + '; 1"' + timing;
+        return '<g transform="translate(' + cx + ' ' + cy + ')">' +
+          '<path d="' + SPARKLE_PATH + '" transform="scale(' + (r * 0.4).toFixed(2) + ')" fill="' + fill + '">' +
+          anim + '</path></g>';
       }).join("") +
       "</g>";
   }
