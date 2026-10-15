@@ -87,6 +87,26 @@ test("sky-clock skin.js：激活即写入 --sky-* 变量与场景 SVG，明暗�
   }
 });
 
+test("sky-clock skin.js：双图层交叉淡化——激活即双图层同图、A 层在位", () => {
+  const dom = installDomStubs();
+  try {
+    const teardown = new Function(skinJs)();
+    const p = dom.body.style.props;
+    // 双图层变量齐备且首帧同图（避免从静态兜底图淡出）
+    for (const key of ["--sky-art", "--sky-art-b", "--sky-a-on", "--sky-b-on"]) {
+      assert.ok(p.has(key), `缺少变量 ${key}`);
+    }
+    assert.equal(p.get("--sky-art"), p.get("--sky-art-b"), "首帧双图层应同图");
+    assert.equal(p.get("--sky-a-on"), "1");
+    assert.equal(p.get("--sky-b-on"), "0");
+    // art-opacity 为连续数值（flipT 插值），不再是二元 0.22/0.35
+    assert.match(p.get("--sky-art-opacity"), /^0\.\d{3}$/);
+    teardown();
+  } finally {
+    dom.restore();
+  }
+});
+
 test("sky-clock skin.js：teardown 清除定时器、监听与全部 --sky-* 变量", () => {
   const dom = installDomStubs();
   try {

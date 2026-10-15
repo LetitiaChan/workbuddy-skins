@@ -1,9 +1,11 @@
 /* Sky Clock · 四时天空 —— 天色随真实时间流转的定制主题。
    骨架与取色哲学移植自内置 aurora（山野极光，JanCong/workbuddy-skin，MIT）：
    body 渐变底 + body::before 挂载场景 SVG + 对话框磨砂浮层。
-   区别在于全部色彩都走 CSS 变量：skin.js 每分钟按天空时刻表重建一次场景 SVG
-   （太阳/月亮弧线、山脊、星星）并改写本文件引用的变量；变量未写入时（CSP 禁 eval
-   导致 js 降级）回退到此处声明的黄昏静态默认值与 sky.svg 兜底图，主题依然可用。
+   区别在于全部色彩都走 CSS 变量：skin.js 每 30s 按天空时刻表重建一次场景 SVG
+   （太阳/月亮弧线、山脊、星星）经 ::before/::after 双图层交叉淡化切换，并改写本
+   文件引用的变量；明暗模式翻转走亮度过渡带连续插值，无到点瞬切。变量未写入时
+   （CSP 禁 eval 导致 js 降级）回退到此处声明的黄昏静态默认值与 sky.svg 兜底图，
+   主题依然可用。
    六个颜色变量经 @property 注册（<color> 可插值），分钟级跳变由 body 上的
    1.5s 过渡平滑化；过渡时长远小于刷新间隔，不会形成常驻逐帧重绘。
    artwork 层 z-index 2147482900，避让本地 🎨 菜单按钮（同层级 2147483000 区间） */
@@ -28,18 +30,29 @@ body {
   ) !important;
 }
 
-body::before {
+/* 场景双图层：::before/::after 互为前后台。skin.js 每次重建把新 SVG 写入背层变量
+   （--sky-art / --sky-art-b 交替），再翻转 --sky-a-on/--sky-b-on 标志，由 opacity
+   过渡完成 1.2s 交叉淡化——background-image 本身不可插值，双图层是消除整图瞬换的
+   唯一途径。js 降级时仅 ::before 挂静态兜底图，::after 无图透明，行为与单层一致 */
+body::before,
+body::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 2147482900;
-  background-image: var(--sky-art, url("./sky.svg"));
   background-position: center bottom;
   background-repeat: no-repeat;
   background-size: cover;
-  opacity: var(--sky-art-opacity, 0.3);
   pointer-events: none;
-  transition: opacity 600ms ease;
+  transition: opacity 1.2s ease;
+}
+body::before {
+  background-image: var(--sky-art, url("./sky.svg"));
+  opacity: calc(var(--sky-art-opacity, 0.3) * var(--sky-a-on, 1));
+}
+body::after {
+  background-image: var(--sky-art-b, none);
+  opacity: calc(var(--sky-art-opacity, 0.3) * var(--sky-b-on, 0));
 }
 
 body [role="dialog"] {

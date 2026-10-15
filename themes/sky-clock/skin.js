@@ -1,6 +1,7 @@
 /* Sky Clock · 四时天空 —— 主题伴随脚本（new Function 函数体，返回拆除回调）。
-   职责：按真实时间插值「天空时刻表」，每分钟（整分钟对齐）重建一次场景 SVG 写入
-   --sky-art，同步改写 skin.css 引用的 --sky-* 变量与界面明暗模式。
+   职责：按真实时间插值「天空时刻表」，每 30s（墙钟半分钟对齐）重建一次场景 SVG，
+   经 ::before/::after 双图层交叉淡化写入，同步改写 skin.css 引用的 --sky-* 变量
+   与界面明暗模式（明暗翻转走 0.20–0.40 亮度过渡带 + 迟滞，带内颜色连续插值）。
    明暗模式由本脚本接管（theme.json 声明 dynamicMode，菜单跳过钉住）；
    写类名/属性的方式与菜单 writeMode 完全一致（六个类 + themeKind/themeName +
    colorScheme），观察者在应用回写时重新断言，检查先于写入故收敛无环。
@@ -125,7 +126,7 @@ const CLOUD_BLOBS = [
 ];
 // 微动：每簇云缓慢水平漂移（SMIL，背景图内仍生效），周期长、幅度小、速度错开，
 // 近似积云随风缓移；[x 往返幅度, 周期 s, 相位偏移 s]。
-// begin 锁定墙钟相位（-(epoch+dur-offset) % dur）：每分钟重建 SVG 时 SMIL 时间线虽重启，
+// begin 锁定墙钟相位（-(epoch+dur-offset) % dur）：每 30s 重建 SVG 时 SMIL 时间线虽重启，
 // 但相位由当前时间推出，位置在重建前后严格连续，不会出现跳变/闪回。
 const CLOUD_DRIFT = [[36, 75, 0], [-30, 95, -30], [26, 115, -70]];
 const cloudDriftAnim = (i) => {
@@ -196,7 +197,7 @@ const buildSvg = (h, sky, phase) => {
         // 暗时收缩也随 r：大星收缩更小（更接近原大小），小星缩得更明显
         const sLo = 0.8 + (r - 2) * 0.08;             // r=2→0.80，r=3→0.88
         const fill = tint || "#EAFFF8";               // 亮星偏白、个别偏蓝，冷白为默认
-        // begin 锁墙钟相位：每分钟重建 SVG 时亮度连续，无突变
+        // begin 锁墙钟相位：每次重建 SVG 时亮度连续，无突变
         const begin = -(((Date.now() / 1000 + i * 2.3) % dur + dur) % dur);
         const timing = ' keyTimes="0; 0.3; 1" calcMode="spline"' +
           ' keySplines="0.42 0 0.58 1; 0.42 0 0.58 1" dur="' + dur.toFixed(1) +
@@ -242,11 +243,11 @@ const buildSvg = (h, sky, phase) => {
     // 亮面足够大时环形山落在亮侧（盈右亏左），与太阳的满圆盘明确区分
     const { cx, cy, r } = moon;
     const cxI = cx.toFixed(0), cyI = cy.toFixed(0);
-    // 光晕 = 月光的大气散射，强度随照亮比例缩放：新月（illum→0）无光晕，
-    // 弦月约一半，满月最盛且晕圈最大
+    // 光晕 = 月光的大气散射。强度带基线：0.3 + 0.7·illum——弦月/残月也有可见晕圈
+    // （原直接等于 illum，月牙时 ≈0.2×端点 0.3 几乎不可见），满月最盛且晕圈最大
     if (phase.illumination >= 0.03) {
-      parts += '<circle cx="' + cxI + '" cy="' + cyI + '" r="' + (r * (1.5 + 0.9 * phase.illumination)).toFixed(0) +
-        '" fill="url(#moonGlow)" opacity="' + phase.illumination.toFixed(2) + '"/>';
+      parts += '<circle cx="' + cxI + '" cy="' + cyI + '" r="' + (r * (1.7 + 1.1 * phase.illumination)).toFixed(0) +
+        '" fill="url(#moonGlow)" opacity="' + (0.3 + 0.7 * phase.illumination).toFixed(2) + '"/>';
     }
     if (phase.illumination < 0.03) {
       // 新月：只剩一圈微光轮廓
@@ -276,7 +277,8 @@ const buildSvg = (h, sky, phase) => {
     '<stop offset="1" stop-color="' + sky.bot + '"/></linearGradient>' +
     '<radialGradient id="sunGlow"><stop stop-color="#FF8A4D" stop-opacity="0.9"/>' +
     '<stop offset="1" stop-color="#FF8A4D" stop-opacity="0"/></radialGradient>' +
-    '<radialGradient id="moonGlow"><stop stop-color="#C9D6F2" stop-opacity="0.3"/>' +
+    '<radialGradient id="moonGlow"><stop stop-color="#C9D6F2" stop-opacity="0.55"/>' +
+    '<stop offset="0.55" stop-color="#C9D6F2" stop-opacity="0.22"/>' +
     '<stop offset="1" stop-color="#C9D6F2" stop-opacity="0"/></radialGradient>' +
     '<radialGradient id="rosyGlow"><stop stop-color="' + (rosy ? rosy.warm : "#FFC9D6") + '" stop-opacity="0.85"/>' +
     '<stop offset="1" stop-color="' + (rosy ? rosy.warm : "#FFC9D6") + '" stop-opacity="0"/></radialGradient></defs>' +
@@ -313,7 +315,8 @@ const writeMode = (dark) => {
 
 // ---------- 主刷新 ----------
 const SKY_VARS = [
-  "--sky-art", "--sky-top", "--sky-mid", "--sky-bot",
+  "--sky-art", "--sky-art-b", "--sky-a-on", "--sky-b-on",
+  "--sky-top", "--sky-mid", "--sky-bot",
   "--sky-panel", "--sky-border", "--sky-shadow", "--sky-art-opacity", "--sky-scheme",
 ];
 // 夜间实底表面变量（右侧详情栏/自动化页等读这些成实底）。skin.css 的 body.dark
@@ -338,35 +341,78 @@ const SURFACE_STATIC = {
   "--wb-home-composer-sub-card-bg": "#131E33",
   "--wb-quick-actions-fade-bg": "#0C1526",
 };
+// 浅色时段（IDE Light）原生表面近似值：翻转过渡带内从这些值平滑渐变到暗侧阶梯，
+// 使类名翻转瞬间表面色已经到位——翻转本身在视觉上不可见
+const SURFACE_LIGHT = {
+  "--cb-bg-primary": "#FFFFFF",
+  "--cb-bg-secondary": "#F5F6F8",
+  "--cb-bg-tertiary": "#EBEDF2",
+  "--wb-bg-primary": "#FFFFFF",
+  "--wb-bg-secondary": "#F5F6F8",
+  "--wb-home-composer-card-bg": "#F7F8FA",
+  "--wb-home-composer-sub-card-bg": "#FFFFFF",
+  "--wb-quick-actions-fade-bg": "#FFFFFF",
+};
+// 明暗翻转窗口：天空中带亮度 L ∈ [0.20, 0.40] 为过渡带，flipT 0=纯亮 1=纯暗。
+// 带内所有主题自有颜色连续插值；类名翻转带迟滞（flipT≥0.98 转暗、≤0.02 转亮），
+// 发生在带缘、表面色已就位之后，消除「到点整屏瞬切」
+const FLIP_HI = 0.40, FLIP_LO = 0.20;
+const flipTof = (lum) => Math.min(1, Math.max(0, (FLIP_HI - lum) / (FLIP_HI - FLIP_LO)));
+// 双图层交叉淡化：新场景写入背层再翻转 on 标志，由 skin.css 的 opacity 过渡完成淡入淡出。
+// 首次 tick 两层同图、A 层在位（无淡出过程），之后才交替换层
+let frontIsA = true;
+let artInit = false;
 const tick = () => {
   const d = new Date();
-  const h = d.getHours() + d.getMinutes() / 60;
+  const h = d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
   const sky = frameAt(h);
   const phase = moonPhase(Date.now());
-  const dark = luminance(sky.mid) < 0.3;
+  const lum = luminance(sky.mid);
+  const flipT = flipTof(lum);
+  // 迟滞翻转：过渡带内维持现状，避免阈值附近来回抖动
+  const dark = currentDark === null ? flipT >= 0.5 : (currentDark ? flipT > 0.02 : flipT >= 0.98);
   const svg = buildSvg(h, sky, phase);
   const st = document.body.style;
-  st.setProperty("--sky-art", 'url("data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) + '")');
+  const artUrl = 'url("data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) + '")';
+  if (!artInit) {
+    artInit = true;
+    st.setProperty("--sky-art", artUrl);
+    st.setProperty("--sky-art-b", artUrl);
+    st.setProperty("--sky-a-on", "1");
+    st.setProperty("--sky-b-on", "0");
+  } else if (frontIsA) {
+    st.setProperty("--sky-art-b", artUrl);
+    st.setProperty("--sky-b-on", "1");
+    st.setProperty("--sky-a-on", "0");
+  } else {
+    st.setProperty("--sky-art", artUrl);
+    st.setProperty("--sky-a-on", "1");
+    st.setProperty("--sky-b-on", "0");
+  }
+  frontIsA = !frontIsA;
   st.setProperty("--sky-top", sky.top);
   st.setProperty("--sky-mid", sky.mid);
   st.setProperty("--sky-bot", sky.bot);
-  // 面板色由天际色派生：深色时段压向深海军蓝，浅色时段抬向白
+  // 面板色由天际色派生：随 flipT 从亮侧（抬向白）连续过渡到暗侧（压向深海军蓝）
   const botRgb = hex2rgb(sky.bot);
-  const target = dark ? [10, 17, 32] : [255, 255, 255];
-  const mixT = dark ? 0.58 : 0.6;
+  const target = [255, 255, 255].map((w, i) => lerp(w, [10, 17, 32][i], flipT));
+  const mixT = lerp(0.6, 0.58, flipT);
   const panelRgb = botRgb.map((v, i) => lerp(v, target[i], mixT));
-  st.setProperty("--sky-panel", rgba(panelRgb, dark ? 0.82 : 0.8));
+  st.setProperty("--sky-panel", rgba(panelRgb, lerp(0.8, 0.82, flipT)));
   // 弹窗面板色由上方天空色派生（同 panel 混合比例）：弹窗是顶部下拉浮层，
   // 取色与视窗上半部的天色一致，而不是底部天际的暖色带
   const topRgb = hex2rgb(sky.top);
   const dialogRgb = topRgb.map((v, i) => lerp(v, target[i], mixT));
-  st.setProperty("--sky-border", dark ? "rgba(140,180,230,0.22)" : "rgba(40,90,150,0.16)");
-  st.setProperty("--sky-shadow", dark ? "rgba(20,50,110,0.28)" : "rgba(60,110,170,0.18)");
+  // 边框/阴影同随 flipT 连续过渡（亮侧暖蓝灰 ↔ 暗侧冷蓝）
+  const bc = [40, 90, 150].map((v, i) => lerp(v, [140, 180, 230][i], flipT));
+  st.setProperty("--sky-border", rgba(bc, lerp(0.16, 0.22, flipT)));
+  const sc = [60, 110, 170].map((v, i) => lerp(v, [20, 50, 110][i], flipT));
+  st.setProperty("--sky-shadow", rgba(sc, lerp(0.18, 0.28, flipT)));
   // 夜间场景（星月/山脊剪影）需要存在感，但整屏浮层压在文字上方，过强会蒙雾发糊——
-  // 收敛到 0.35（白天 0.22），保证星月可见又不糊字
-  st.setProperty("--sky-art-opacity", dark ? "0.35" : "0.22");
+  // 0.22（白天）→ 0.35（深夜）随 flipT 渐变，保证星月可见又不糊字
+  st.setProperty("--sky-art-opacity", lerp(0.22, 0.35, flipT).toFixed(3));
   st.setProperty("--sky-scheme", dark ? "dark" : "light");
-  // 实况色调钩子：主题选择弹窗打开时读它刷新背景/选中描边——天色每分钟流转，
+  // 实况色调钩子：主题选择弹窗打开时读它刷新背景/选中描边——天色每 30s 流转，
   // theme.json 里的静态 surface/accent 只是快照；mid 是当前时刻天空中间色，
   // 亮暗与明暗模式一致，弹窗文字色由菜单按亮度自适应
   document.body.dataset.workbuddySkinTone = sky.mid;
@@ -378,8 +424,11 @@ const tick = () => {
   // 但只在真正入夜后跟随：黄昏/黎明（sky.mid 偏粉紫、亮度仍高，如 17.6 帧 #C96B80）
   // 若直接加偏移会把面板抬成高饱和品红，与磨砂侧栏/详情栏明显脱节——按天空中带亮度
   // 在静态与动态间平滑过渡：L(mid) ≥0.15 全静态（skin.css 海军蓝），≤0.05 全动态
-  const track = Math.min(1, Math.max(0, (0.15 - luminance(sky.mid)) / 0.10));
-  if (dark) {
+  // 实底面板阶梯全程连续：过渡带内先从浅色原生值渐变到暗侧静态值（类名翻转时已就位），
+  // 入夜后再按 track 从静态值渐变到跟随 sky.mid 的动态值（见上方注释）。
+  // 三段链：SURFACE_LIGHT →(flipT)→ SURFACE_STATIC →(track)→ dynamic
+  const track = Math.min(1, Math.max(0, (0.15 - lum) / 0.10));
+  if (flipT > 0) {
     const base = hex2rgb(sky.mid);
     const lift = (d) => rgb2hex(base.map((v, i) => Math.min(255, Math.round(v + d[i]))));
     const dynamic = {
@@ -393,7 +442,8 @@ const tick = () => {
       "--wb-quick-actions-fade-bg": lift([1, 0, 0]),
     };
     for (const k of SURFACE_VARS) {
-      st.setProperty(k, lerpHex(SURFACE_STATIC[k], dynamic[k], track), "important");
+      const darkSide = lerpHex(SURFACE_STATIC[k], dynamic[k], track);
+      st.setProperty(k, lerpHex(SURFACE_LIGHT[k], darkSide, flipT), "important");
     }
   } else {
     SURFACE_VARS.forEach((p) => st.removeProperty(p));
@@ -409,17 +459,17 @@ const observer = new MutationObserver(() => {
 observer.observe(document.body, { attributes: true, attributeFilter: ["class", "data-vscode-theme-kind", "data-vscode-theme-name"] });
 observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
 
-// ---------- 定时：分钟级刷新（整分钟对齐）；页面重新可见时补算（节流兜底） ----------
-// 每分钟重建一次场景 SVG：单次开销 ≈ 字符串拼接 <1ms + 整屏 SVG 重栅格化 ~5ms，
-// 平均 CPU 占用 <0.1%；天体分钟级位移 ≤2px、天色经 skin.css 的 @property 颜色过渡
-// 平滑滑动，视觉即为连续流动。颜色过渡时长 << 刷新间隔，避免常驻逐帧重绘。
+// ---------- 定时：半分钟级刷新（对齐墙钟半分钟）；页面重新可见时补算（节流兜底） ----------
+// 每 30s 重建一次场景 SVG：单次开销 ≈ 字符串拼接 <1ms + 整屏 SVG 重栅格化 ~5ms，
+// 平均 CPU 占用 <0.2%；天体半分钟位移 ≤1px，天色经 skin.css 的 @property 颜色过渡、
+// 场景图经 ::before/::after 双图层交叉淡化，视觉即为连续流动，无到点瞬切。
 tick();
 let interval = null;
-const toNextMinute = 60000 - (Date.now() % 60000) + 30;
+const toNextHalf = 30000 - (Date.now() % 30000) + 30;
 const timeout = setTimeout(() => {
   tick();
-  interval = setInterval(tick, 60000);
-}, toNextMinute);
+  interval = setInterval(tick, 30000);
+}, toNextHalf);
 const onVisible = () => {
   if (!document.hidden) tick();
 };
