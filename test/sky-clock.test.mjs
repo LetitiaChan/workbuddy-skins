@@ -181,3 +181,27 @@ test("sky-clock 白云：正午三簇纯白、晨昏染霞色、夜间不渲染"
   const svgNight = lib.buildSvg(0, lib.frameAt(0), lib.moonPhase(Date.now()));
   assert.ok(!svgNight.includes("sky-clouds"), "子夜场景不应含云层");
 });
+
+test("sky-clock 白云：漂移带 y 沉浮分量与非对称 keySplines（模拟阵风）", () => {
+  const svg = lib.buildSvg(12, lib.frameAt(12), lib.moonPhase(Date.now()));
+  assert.ok(svg.includes('values="0 0; 36 4; 0 0"'), "云漂移应含 y 沉浮分量");
+  assert.ok(svg.includes('keySplines="0.3 0 0.7 1; 0.42 0 1 1"'), "去程/回程 keySplines 应非对称");
+  assert.ok(!svg.includes('keySplines="0.42 0 0.58 1; 0.42 0 0.58 1"'), "旧对称 keySplines 应已移除");
+});
+
+test("sky-clock 减弱动效：命中 prefers-reduced-motion 时不输出云漂移与星闪 SMIL", () => {
+  const saved = globalThis.window;
+  globalThis.window = { matchMedia: () => ({ matches: true }) };
+  try {
+    const libRM = eval(skinJs.slice(skinJs.indexOf("const FRAMES"), skinJs.indexOf("// ---------- 明暗模式")) +
+      "; ({ buildSvg, frameAt, moonPhase })");
+    const noon = libRM.buildSvg(12, libRM.frameAt(12), libRM.moonPhase(Date.now()));
+    assert.ok(noon.includes('class="sky-clouds"'), "减弱动效下云层应静态保留");
+    assert.ok(!noon.includes("<animate"), "减弱动效下正午场景不应含 SMIL 动画");
+    const night = libRM.buildSvg(23, libRM.frameAt(23), libRM.moonPhase(Date.now()));
+    assert.ok(night.includes("M0 -10 Q1.6"), "减弱动效下星芒应静态保留");
+    assert.ok(!night.includes("<animate"), "减弱动效下夜间场景不应含星闪 SMIL");
+  } finally {
+    if (saved === undefined) delete globalThis.window; else globalThis.window = saved;
+  }
+});
