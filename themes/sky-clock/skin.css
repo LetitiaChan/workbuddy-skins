@@ -75,3 +75,14 @@ body.dark {
   --wb-home-composer-sub-card-bg: #131e33 !important;
   --wb-quick-actions-fade-bg: #0c1526 !important;
 }
+
+/* 右侧详情栏包裹层：原生读 --wb-sidebar-bg（#1f1f1f 灰实底），与内容层
+   （.detail-new-tab-landing 读 --wb-bg-primary 海军蓝）相邻时出现灰/蓝色块跳变。
+   钉为主题海军蓝表面变量——js 运行时随 sky.mid 动态阶梯走，js 降级时用静态值。
+   只钉这两个包裹层、不碰 --wb-sidebar-bg 本体：左侧栏原生规则大量 !important
+   引用它作实底，改变量会在磨砂侧栏冒色块 */
+body.dark .detail-layout,
+body.dark .detail-main__body {
+  background-color: var(--wb-bg-primary) !important;
+}
+
