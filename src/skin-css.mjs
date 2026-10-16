@@ -67,6 +67,9 @@ body[data-application-name=workbuddy] {
   --wb-text: ${colors.text};
   /* 渐变标题轮廓色：随渐变中点亮度自适应黑/白，与文字恒为对立极 */
   --wb-halo: ${gradientTextHalo("var(--wb-accent)", "var(--wb-secondary)")};
+  /* 遮罩/纱罩色：surface 掺 14% accent（oklch 混合保留色相）——纯 surface 纱罩叠在
+     壁纸上会把色相洗成死灰、整体发闷；掺主题色后压暗力度不变，色调与壁纸同族 */
+  --wb-veil: color-mix(in oklch, var(--wb-surface) 86%, var(--wb-accent));
 
   /* 背景 */
   --cb-bg-primary: var(--wb-surface) !important;
@@ -93,7 +96,9 @@ body[data-application-name=workbuddy] {
   --cb-vscode-titleBar-inactiveBackground: color-mix(in srgb, var(--wb-accent) 80%, var(--wb-surface)) !important;
   --cb-vscode-titleBar-inactiveForeground: color-mix(in srgb, #ffffff 70%, transparent) !important;
   --cb-titlebar-control-hover-background: color-mix(in srgb, var(--wb-accent) 16%, transparent) !important;
-  --cb-vscode-input-background: color-mix(in srgb, var(--wb-surface) 88%, transparent) !important;
+  /* 输入框底色：88% 实底白比周围磨砂层（侧栏 78%、面板 60%）亮一整档，壁纸上刺眼脱节；
+     降到 62% 并改用带色相的 --wb-veil，亮度与磨砂层拉齐（模糊由 .cr-input-container 规则补） */
+  --cb-vscode-input-background: color-mix(in srgb, var(--wb-veil) 62%, transparent) !important;
   --cb-vscode-dropdown-background: color-mix(in srgb, var(--wb-surface) 94%, transparent) !important;
   --cb-vscode-list-hoverBackground: color-mix(in srgb, var(--wb-accent) 16%, transparent) !important;
   --cb-vscode-toolbar-hoverBackground: color-mix(in srgb, var(--wb-accent) 16%, transparent) !important;
@@ -377,10 +382,11 @@ ${buildVariableOverrides(colors)}
      CSS 文本提取首个 url(data:image...)，本声明即唯一命中点，提取链路不受影响 */
   --wb-hero: url(${JSON.stringify(heroDataUrl)});
   /* 左遮罩收窄降强度：只托住侧边栏宽度（0→14%），72% 强度，30% 处全透明；
-     下遮罩收窄到 85%→100%，强度降到 50%，四周大面积透出壁纸 */
+     下遮罩收窄到 85%→100%，强度降到 50%，四周大面积透出壁纸；
+     遮罩色用 --wb-veil（掺 accent 带色相），压暗不变但不把壁纸洗灰 */
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--wb-surface) 72%, transparent) 0 14%, transparent 30%),
-    linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-surface) 50%, transparent) 85% 100%),
+    linear-gradient(90deg, color-mix(in srgb, var(--wb-veil) 72%, transparent) 0 14%, transparent 30%),
+    linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-veil) 50%, transparent) 85% 100%),
     var(--wb-hero) right center / cover no-repeat fixed !important;
 }
 
@@ -391,9 +397,9 @@ ${buildVariableOverrides(colors)}
    规则（均带 !important），chat 时整组 background 被本规则替换 */
 body[data-wb-skin-page="chat"] #root {
   background:
-    linear-gradient(0deg, color-mix(in srgb, var(--wb-surface) 50%, transparent), color-mix(in srgb, var(--wb-surface) 50%, transparent)),
-    linear-gradient(90deg, color-mix(in srgb, var(--wb-surface) 72%, transparent) 0 14%, transparent 30%),
-    linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-surface) 50%, transparent) 85% 100%),
+    linear-gradient(0deg, color-mix(in srgb, var(--wb-veil) 50%, transparent), color-mix(in srgb, var(--wb-veil) 50%, transparent)),
+    linear-gradient(90deg, color-mix(in srgb, var(--wb-veil) 72%, transparent) 0 14%, transparent 30%),
+    linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-veil) 50%, transparent) 85% 100%),
     var(--wb-hero) right center / cover no-repeat fixed !important;
 }
 
@@ -435,13 +441,23 @@ body[data-wb-skin-page="chat"] #root {
 
 /* 主内容区：顶部透出底图，底部轻微渐变保证内容可读（与 #root 下遮罩同步收窄降强度） */
 [data-view-id=main-content] {
-  background: linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-surface) 50%, transparent) 100%) !important;
+  background: linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-veil) 50%, transparent) 100%) !important;
 }
 
 /* 新建任务/首页路由（5.7.x 起独立的 main.wb-home-route，不走 [data-view-id] 结构）：
    默认不透明深底 rgb(20,20,20)，会完全盖住 #root 背景图，处理同 main-content */
 .wb-home-route {
-  background: linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-surface) 50%, transparent) 100%) !important;
+  background: linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-veil) 50%, transparent) 100%) !important;
+}
+
+/* 输入框容器磨砂（cr-input-* 设计系统类）：原生固定灰/白实底，不读
+   --cb-vscode-input-background，壁纸上呈一块刺眼白板（比侧栏 78%、面板 60% 磨砂层
+   亮一整档）。改用 --wb-veil 62% + 模糊，与 skill-rec-bar/chips 同一磨砂语言，
+   亮度与周围磨砂层拉齐；配色主题在 buildPaletteCss 另有自己的 .cr-input-container
+   实底规则（无壁纸可透），本规则只进图片主题 */
+.cr-input-container {
+  background: color-mix(in srgb, var(--wb-veil) 62%, transparent) !important;
+  backdrop-filter: blur(14px) saturate(1.08);
 }
 
 /* 助理页工作区（.claw-workspace：助理列表抽屉 + 会话主区，挂在 [data-view-id=main-content] 内）：

@@ -391,6 +391,15 @@ const parseOpaque = (v) => {
 };
 const isDarkNeutral = (rgb) =>
   Math.max(...rgb) - Math.min(...rgb) <= NEUTRAL_MAX_SPREAD && Math.max(...rgb) <= NEUTRAL_MAX_LEVEL;
+// 浅色中性表面：同一「近中性」判定，亮度档反转（最暗分量 ≥176，排除彩色 accent 与深色）。
+// 原生 IDE Light 全是中性无彩灰，与天空/山脊场景的色相脱节——浅色时段同样需要着色
+const NEUTRAL_MIN_LEVEL_LIGHT = 176;
+const isLightNeutral = (rgb) =>
+  Math.max(...rgb) - Math.min(...rgb) <= NEUTRAL_MAX_SPREAD && Math.min(...rgb) >= NEUTRAL_MIN_LEVEL_LIGHT;
+// 浅色着色强度高于深色（近白表面色相感知弱）、限幅更宽；纯白表面未被钳位的通道回落，
+// 等效「压暗偏色通道」——亮度微降、色相就位，且不透明度/明度阶梯不动
+const TINT_STRENGTH_LIGHT = 0.55;
+const TINT_CAP_LIGHT = 9;
 // 令牌名扫描（不含本主题样式表）：样式表数量变化（懒加载 chunk）时重扫
 let tokenNames = [];
 let sheetCount = -1;
@@ -446,18 +455,39 @@ const readNative = (dark) => {
   cacheFresh = rescanned ? { dark: false, light: false, [mode]: true } : { ...cacheFresh, [mode]: true };
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(nativeCache)); } catch { /* 忽略 */ }
 };
-// 按当前明暗与过渡带进度写入全部中性表面令牌（内联 !important 压过原生规则）
-const applySurfaces = (dark, flipT, tint) => {
+// 按当前明暗与过渡带进度写入全部中性表面令牌（内联 !important 压过原生规则）。
+// hue 为浅色着色/过渡带去灰共用的天色色相向量（见 tick）
+const applySurfaces = (dark, flipT, tint, hue) => {
   readNative(dark);
   const darkNative = nativeCache.dark, lightNative = nativeCache.light;
-  if (!darkNative || flipT <= 0) { clearApplied(); return; }
   const st = document.body.style;
+  // 纯浅色时段（flipT=0）：给浅色中性表面加天色色相偏移——界面从「无彩灰」变为
+  // 「带天色倾向的浅灰」，与天空/山脊同族；明度阶梯与透明度不动
+  if (!dark && flipT <= 0) {
+    clearApplied();
+    if (!lightNative) return;
+    for (const n in lightNative) {
+      const rgb = lightNative[n];
+      if (!isLightNeutral(rgb)) continue;
+      st.setProperty(n, rgb2hex(rgb.map((v, i) => v + hue[i])), "important");
+      applied.add(n);
+    }
+    return;
+  }
+  if (!darkNative || flipT <= 0) { clearApplied(); return; }
+  // 过渡带变暗改平方缓动：带前段保持浅色，暗化压缩到类名翻转之前，漫长的
+  // 「半暗死灰」中段大幅缩短；带内再叠天色色相（峰值在带中央 hueAmt=1），
+  // 线性插值的中点本是不饱和死灰，带色相的灰才不脏
+  const ease = flipT * flipT;
+  const hueAmt = 4 * flipT * (1 - flipT);
   for (const n in darkNative) {
     const tinted = darkNative[n].map((v, i) => v + tint[i]);
     // 过渡带内从浅色原生值渐变（无浅色档时深色侧直接到位；浅色模式下无浅色值则不动）
     const light = lightNative && lightNative[n];
     if (!light && !dark) continue;
-    const rgb = light && flipT < 1 ? light.map((v, i) => lerp(v, tinted[i], flipT)) : tinted;
+    const rgb = light && ease < 1
+      ? light.map((v, i) => lerp(v, tinted[i], ease) + hue[i] * hueAmt)
+      : tinted;
     st.setProperty(n, rgb2hex(rgb), "important");
     applied.add(n);
   }
@@ -535,8 +565,13 @@ const tick = () => {
   const raw = STATIC_TINT.map((v, i) => lerp(v, chromaOf(hex2rgb(sky.mid))[i], track) * TINT_STRENGTH);
   const peak = Math.max(...raw.map(Math.abs));
   const tint = peak > TINT_CAP ? raw.map((v) => (v * TINT_CAP) / peak) : raw;
-  lastSurface = [dark, flipT, tint];
-  applySurfaces(dark, flipT, tint);
+  // 浅色着色/过渡带去灰共用的天色色相向量：直接取当前天空中带色（黄昏粉紫、正午天蓝），
+  // 与深色 tint 的「午夜海军蓝兜底」不同——浅色表面就活在当前天色下
+  const hueRaw = chromaOf(hex2rgb(sky.mid)).map((v) => v * TINT_STRENGTH_LIGHT);
+  const huePeak = Math.max(...hueRaw.map(Math.abs));
+  const hue = huePeak > TINT_CAP_LIGHT ? hueRaw.map((v) => (v * TINT_CAP_LIGHT) / huePeak) : hueRaw;
+  lastSurface = [dark, flipT, tint, hue];
+  applySurfaces(dark, flipT, tint, hue);
 };
 let lastSurface = null;
 

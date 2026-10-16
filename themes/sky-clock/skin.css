@@ -71,7 +71,8 @@ body [role="dialog"] {
    --wb-home-bg-* 与卡片系 --wb-bg-*/--cb-bg-* 同一变换，视图间无灰/蓝跳变），
    下方实底静态值仅在 js 降级（无 data-sky-js）时兜底：同样按「原生值同值 → 同色」
    映射（#1f1f1f 系 → #191e26，#141414 系 → #0e131b，即午夜色相 ×0.5）。半透明悬停/次级文字色两种
-   情况都生效。浅色时段保持原生 IDE Light 不动。 */
+   情况都生效。浅色时段由 skin.js 反向应用同一机制（浅色中性灰加天色色相偏移），
+   不再保持原生无彩灰 */
 body.dark {
   --cb-hover-bg: rgba(160, 190, 235, 0.08) !important;
   --cb-text-secondary: rgba(226, 236, 252, 0.72) !important;
@@ -93,6 +94,16 @@ body.dark:not([data-sky-js]) {
   --wb-home-composer-card-bg: #242931 !important;
   --wb-home-composer-sub-card-bg: #191e26 !important;
   --wb-quick-actions-fade-bg: #0e131b !important;
+}
+
+/* 输入框卡片：原生 --wb-home-composer-*-card-bg 的值不是纯色（color-mix/变量引用），
+   skin.js 的令牌扫描着色覆盖不到——过渡带里周围表面已变暗着色、输入框却保持纯白，
+   刺眼跳出。js 运行时改读 --sky-panel：该变量随 flipT 从「天际色混白」连续过渡到
+   深海军蓝（skin.js 每 30s 重写，@property 颜色过渡平滑化），输入框与全局同节奏，
+   且 0.8 alpha 半透叠在天空渐变上，亮度与场景协调 */
+body[data-sky-js] {
+  --wb-home-composer-card-bg: var(--sky-panel) !important;
+  --wb-home-composer-sub-card-bg: var(--sky-panel) !important;
 }
 
 /* 页面级底色统一：原生右侧详情栏（.detail-*，读 --wb-bg-primary/--wb-sidebar-bg）与

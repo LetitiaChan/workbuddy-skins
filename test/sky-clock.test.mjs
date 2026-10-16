@@ -135,6 +135,56 @@ test("sky-clock skin.js：深色时段所有原生中性灰令牌（画布系与
   }
 });
 
+test("sky-clock skin.js：浅色时段浅色中性表面加天色色相偏移，彩色/深色令牌不动", () => {
+  const dom = installDomStubs();
+  const RealDate = globalThis.Date;
+  // 正午 12:00：天空亮度高，flipT=0 纯浅色时段
+  const noon = new RealDate(2026, 9, 15, 12, 0, 0).getTime();
+  globalThis.Date = class extends RealDate {
+    constructor(...a) { super(...(a.length ? a : [noon])); }
+    static now() { return noon; }
+  };
+  // 浅色原生令牌：近白灰应被着色；彩色 accent、深色、文字类不应被改写
+  const native = {
+    "--wb-home-bg-secondary": "#fafafa",
+    "--wb-bg-primary": "#ffffff",
+    "--wb-accent-bg": "#3a6fd8",
+    "--wb-card-dark": "#1f1f1f",
+    "--wb-text-strong": "#fafafa",
+  };
+  const names = Object.keys(native);
+  globalThis.document.styleSheets = [{ ownerNode: {}, cssRules: [{ style: Object.assign([...names], {}) }] }];
+  globalThis.getComputedStyle = () => ({
+    getPropertyValue: (n) => dom.body.style.props.get(n) ?? native[n] ?? "",
+  });
+  try {
+    const teardown = new Function(skinJs)();
+    const p = dom.body.style.props;
+    assert.equal(dom.body.dataset.vscodeThemeKind, "vscode-light", "正午应为浅色模式");
+    const bg = p.get("--wb-home-bg-secondary"), card = p.get("--wb-bg-primary");
+    assert.match(bg ?? "", /^#[0-9a-f]{6}$/);
+    assert.match(card ?? "", /^#[0-9a-f]{6}$/);
+    // 同一偏移向量：r/g 通道差 = 原生差 5（b 通道受 255 钳位，差值 ≤5），明度阶梯保留
+    const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const diff = rgb(card).map((v, i) => v - rgb(bg)[i]);
+    assert.equal(diff[0], 5);
+    assert.equal(diff[1], 5);
+    assert.ok(diff[2] >= 0 && diff[2] <= 5, `b 通道差应受钳位在 [0,5]，实际 ${diff[2]}`);
+    // 正午天空中带偏蓝，着色后 b ≥ r
+    const [r, , b] = rgb(card);
+    assert.ok(b >= r, `浅色表面应带上天空色相，实际 ${card}`);
+    for (const n of ["--wb-accent-bg", "--wb-card-dark", "--wb-text-strong"]) {
+      assert.ok(!p.has(n), `${n} 不应被改写`);
+    }
+    teardown();
+    assert.ok(!p.has("--wb-home-bg-secondary"), "teardown 应清除表面令牌");
+  } finally {
+    globalThis.Date = RealDate;
+    delete globalThis.getComputedStyle;
+    dom.restore();
+  }
+});
+
 test("sky-clock skin.js：双图层交叉淡化——激活即双图层同图、A 层在位", () => {
   const dom = installDomStubs();
   try {

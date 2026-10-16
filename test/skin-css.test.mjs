@@ -81,7 +81,7 @@ test("会话/详情页壁纸降噪：chat 页标记时 #root 叠 50% 表面色�
   const marker = 'body[data-wb-skin-page="chat"] #root {';
   assert.ok(css.includes(marker));
   const chatBlock = css.slice(css.indexOf(marker), css.indexOf("}", css.indexOf(marker)));
-  assert.ok(chatBlock.includes("color-mix(in srgb, var(--wb-surface) 50%, transparent)"));
+  assert.ok(chatBlock.includes("color-mix(in srgb, var(--wb-veil) 50%, transparent)"));
   assert.ok(chatBlock.includes("var(--wb-hero)"), "纱罩下应保留 hero 底图（透出隐约底色）");
   // 全 var() 引用：自定义皮肤哨兵替换后自动适配取色
   assert.ok(!/#[0-9a-f]{3,8}\b/i.test(chatBlock), "纱罩不应硬编码色值");
