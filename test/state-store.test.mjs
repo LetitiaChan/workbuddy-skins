@@ -47,3 +47,42 @@ test("writeState：patch 非对象时拒绝写入", async () => {
   await assert.rejects(writeState(null, { statePath: await freshPath() }), TypeError);
   await assert.rejects(writeState([1], { statePath: await freshPath() }), TypeError);
 });
+
+test("writeState：并发写串行化，不丢失更新（read-modify-write 竞态回归）", async () => {
+  const statePath = await freshPath();
+  // 不 await 第一次就发起第二次：旧实现两者各自读到同一份（空）快照，
+  // 后 rename 的那次整体覆盖，先写的键静默消失
+  const [a, b] = await Promise.all([
+    writeState({ lastApply: { ok: true, themeId: "miku-light" } }, { statePath }),
+    writeState({ releaseCheck: { at: "2026-10-18T00:00:00Z" } }, { statePath }),
+  ]);
+  const final = await readState({ statePath });
+  assert.ok(final.lastApply, "lastApply 不应被并发写覆盖丢失");
+  assert.ok(final.releaseCheck, "releaseCheck 不应被并发写覆盖丢失");
+  assert.equal(final.lastApply.themeId, "miku-light");
+  assert.equal(final.releaseCheck.at, "2026-10-18T00:00:00Z");
+  // 后执行的那次返回值应已包含先执行的键（串行可见性）
+  const later = a.releaseCheck ? a : b;
+  assert.ok(later.lastApply && later.releaseCheck, "后一次写入应看到前一次的结果");
+});
+
+test("writeState：队列中一次失败不影响后续写入", async () => {
+  const statePath = await freshPath();
+  const bad = writeState({ loop: { get self() { throw new Error("boom"); } } }, { statePath });
+  await assert.rejects(bad);
+  // 链上后续请求照常执行
+  const ok = await writeState({ lastApply: { ok: true } }, { statePath });
+  assert.ok(ok.lastApply.ok);
+  assert.deepEqual((await readState({ statePath })).lastApply, { ok: true });
+});
+
+test("writeState：大量并发写全部生效，键不互相覆盖", async () => {
+  const statePath = await freshPath();
+  await Promise.all(
+    Array.from({ length: 12 }, (_, i) => writeState({ [`k${i}`]: i }, { statePath })),
+  );
+  const final = await readState({ statePath });
+  for (let i = 0; i < 12; i++) {
+    assert.equal(final[`k${i}`], i, `k${i} 应存在且为 ${i}`);
+  }
+});

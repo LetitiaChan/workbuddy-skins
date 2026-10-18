@@ -19,18 +19,42 @@ export async function readState({ statePath } = {}) {
   }
 }
 
+// 写入串行化：writeState 是 read-modify-write，并发调用会丢失更新——
+// 后 rename 的那次用的是自己读到的旧快照，先写的字段被整体覆盖掉。
+// 这不是假想：cli 的 updateHint 在后台写 releaseCheck（update-check），
+// 主流程同时写 lastApply，两者天然并发。按 statePath 维度挂一条 Promise 链，
+// 同一文件的写请求排队执行；失败不污染后续（catch 后继续接链）。
+const writeQueues = new Map();
+function enqueueWrite(path, task) {
+  const prev = writeQueues.get(path) ?? Promise.resolve();
+  const run = prev.then(task, task);
+  // 队尾只用于排序，不保留结果与异常，避免 unhandled rejection
+  const tail = run.then(
+    () => {},
+    () => {},
+  );
+  writeQueues.set(path, tail);
+  // 链排空后清理，避免长生命周期进程里 Map 无界增长
+  tail.then(() => {
+    if (writeQueues.get(path) === tail) writeQueues.delete(path);
+  });
+  return run;
+}
+
 export async function writeState(patch, { statePath } = {}) {
   if (patch === null || typeof patch !== "object" || Array.isArray(patch)) {
     throw new TypeError("state patch must be a plain object");
   }
   const path = statePath ?? resolveStudioPaths().statePath;
-  const current = (await readState({ statePath: path })) ?? {};
-  const next = { ...current, ...patch, schemaVersion: STATE_SCHEMA_VERSION };
-  await mkdir(dirname(path), { recursive: true });
-  // 原子写入：先写临时文件再 rename，进程中断也不会留下半个 JSON。
-  // 随机后缀防同进程并发写撞名（当前 CLI 单发不会触发，兜底未来调用方）
-  const tmp = `${path}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`;
-  await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`);
-  await rename(tmp, path);
-  return next;
+  return enqueueWrite(path, async () => {
+    const current = (await readState({ statePath: path })) ?? {};
+    const next = { ...current, ...patch, schemaVersion: STATE_SCHEMA_VERSION };
+    await mkdir(dirname(path), { recursive: true });
+    // 原子写入：先写临时文件再 rename，进程中断也不会留下半个 JSON。
+    // 随机后缀防跨进程并发写撞名（同进程内已由 enqueueWrite 串行化）
+    const tmp = `${path}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`;
+    await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`);
+    await rename(tmp, path);
+    return next;
+  });
 }

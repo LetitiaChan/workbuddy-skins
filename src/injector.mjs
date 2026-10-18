@@ -2,18 +2,25 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { CdpSession, fetchRendererTargets, waitForRendererTargets } from "./cdp-client.mjs";
+import { waitForRendererTargets } from "./cdp-client.mjs";
+import { MENU_ID, MENU_INJECT_TIMEOUT_MS, STYLE_ID } from "./constants.mjs";
+import {
+  errorText,
+  evaluateOnPort,
+  evaluateTargets,
+  openSession,
+  resolveDeps,
+  withSession,
+} from "./renderer-session.mjs";
 import { BASE64_DECODE_SNIPPET, IDB_OPEN_SNIPPET, VIDEO_DB_LITERALS } from "./renderer-snippets.mjs";
 import { buildMascotCss, buildPaletteCss, buildSkinCss, buildTaglineCss } from "./skin-css.mjs";
 import { buildSkinMenuScript, CSS_SENTINELS, TEARDOWN_GLOBAL, VIDEO_LAYER_CSS } from "./skin-menu.mjs";
 import { isInsideDir } from "./theme-schema.mjs";
-import { probeAnimatedSize } from "./theme-store.mjs";
+import { probeAnimatedSize } from "./media-probe.mjs";
 import { readLocalReleaseVersion, readLocalVersion } from "./update-check.mjs";
 
 const sourceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const STYLE_ID = "workbuddy-skin-style";
-const MENU_ID = "workbuddy-skin-menu";
 const MIME = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -28,7 +35,6 @@ const { store: VIDEO_STORE } = VIDEO_DB_LITERALS;
 // CSS 主题（定制主题移植）资源内联用的扩展 MIME：SVG 走 image/svg+xml
 const CSS_ASSET_MIME = { ...MIME, ".svg": "image/svg+xml" };
 
-const errorText = (error) => (error instanceof Error ? error.message : String(error));
 
 
 
@@ -72,49 +78,6 @@ async function inlineJsAssets(js, themeRoot, themeId) {
     dataUrls.set(ref, `data:${mime};base64,${bytes.toString("base64")}`);
   }
   return js.replace(pattern, (whole, quote, ref) => `${quote}${dataUrls.get(ref) ?? ref}${quote}`);
-}
-
-function resolveDeps(deps) {
-  return {
-    fetchTargets: deps.fetchRendererTargets ?? fetchRendererTargets,
-    Session: deps.Session ?? CdpSession,
-  };
-}
-
-async function openSession(Session, target) {
-  const session = new Session(target.webSocketDebuggerUrl);
-  try {
-    await session.open();
-  } catch (error) {
-    session.close();
-    throw error;
-  }
-  return session;
-}
-
-async function withSession(Session, target, run) {
-  const session = await openSession(Session, target);
-  try {
-    return await run(session);
-  } finally {
-    session.close();
-  }
-}
-
-// 轻量表达式（状态/暂停/读取/激活）各 target 互不依赖，并发执行；结果顺序与 targets 一致。
-// 单个 target 失败（会话建立时正好导航/连接断开）不拖垮整批：拒绝位记 null，
-// 调用方按语义忽略（status 该位为 null、remove/activate 只计成功数、doctor 聚合跳过空值）
-async function evaluateTargets(targets, expression, Session) {
-  const settled = await Promise.allSettled(
-    targets.map((target) => withSession(Session, target, (session) => session.evaluate(expression))),
-  );
-  return settled.map((outcome) => (outcome.status === "fulfilled" ? outcome.value : null));
-}
-
-async function evaluateOnPort(port, expression, deps) {
-  const { fetchTargets, Session } = resolveDeps(deps);
-  const targets = await fetchTargets(port);
-  return evaluateTargets(targets, expression, Session);
 }
 
 // theme.json thumbnail：读为 data URL 随条目下发，弹窗卡片优先用它作封面
@@ -326,27 +289,6 @@ async function syncVideosInSession(session, { videoEntries, sources }) {
 
 const videoWarning = (target, error) => `视频预置到渲染进程失败（target ${target.id}）：${errorText(error)}`;
 
-// 视频预置是增强项而非注入目标：单个 target 上传失败（超时 / OOM / renderer 正好导航）
-// 只收集警告，不阻塞皮肤注入——菜单端对「视频数据缺失」本就有兜底提示
-export async function ensureRendererVideos({ targets, Session, entries }) {
-  const plan = await prepareVideoSources(entries);
-  if (plan.warning) return [plan.warning];
-  if (plan.videoEntries.length === 0) return [];
-  // 各 target 是独立渲染进程，互不依赖，并发预置；单个失败只收集警告（结果序与
-  // targets 一致），不阻塞皮肤注入——菜单端对「视频数据缺失」本就有兜底提示
-  const outcomes = await Promise.all(
-    targets.map(async (target) => {
-      try {
-        await withSession(Session, target, (session) => syncVideosInSession(session, plan));
-        return null;
-      } catch (error) {
-        return videoWarning(target, error);
-      }
-    }),
-  );
-  return outcomes.filter(Boolean);
-}
-
 export async function applySkin({ loadedTheme, themes, port, activeId, deps = {} }) {
   const wait = deps.waitForRendererTargets ?? waitForRendererTargets;
   const { Session } = resolveDeps(deps);
@@ -410,7 +352,9 @@ export async function applySkin({ loadedTheme, themes, port, activeId, deps = {}
             session = await openSession(Session, target);
           }
         }
-        await session.evaluate(expression);
+        // 注入体是 MB 量级（全主题素材内联），必须显式给足超时预算——
+        // CDP 默认 5s 对 8MB 表达式的同步解析+编译不够，见 MENU_INJECT_TIMEOUT_MS 注释
+        await session.evaluate(expression, { timeoutMs: MENU_INJECT_TIMEOUT_MS });
         return true;
       } finally {
         session.close();
@@ -440,106 +384,6 @@ export async function removeSkin({ port, deps = {} }) {
   const values = await evaluateOnPort(port, expression, deps);
   // evaluateTargets 对失败 target 记 null：removed 只计真正拆除成功的窗口
   return { removed: values.filter(Boolean).length };
-}
-
-// ---- doctor 适配预警：探测 WorkBuddy 大改版 ----
-// 皮肤机制的两个根基：body[data-application-name=workbuddy] 上的 --cb-* 设计变量系统
-// （换色核心，实测 60+ 个）与 [data-view-id] DOM 锚点（容器透化/磨砂的作用对象）。
-// 大改版若改掉任一者，皮肤会大面积失效，doctor 主动探测给出预警
-export const EXPECTED_VIEW_IDS = ["sidebar", "main-content", "detail-panel"];
-
-// 探测变量名单（14 个，2026-10 实测原生全部存在）：覆盖块核心变量 + 两个未被皮肤
-// 覆盖的原生变量（team-member-card / markdown-hr）——皮肤 <style> 被禁用后仍能量测，
-// 但保留未覆盖样本可防御未来探测逻辑变动。getComputedStyle 的索引枚举不含自定义属性
-// （实测 length 395 个标准属性、--cb-* 为 0），必须按名单逐个 getPropertyValue
-export const CB_PROBE_VARS = [
-  "--cb-bg-primary",
-  "--cb-bg-secondary",
-  "--cb-panel-bg-primary",
-  "--cb-text-primary",
-  "--cb-text-secondary",
-  "--cb-text-link",
-  "--cb-vscode-editor-background",
-  "--cb-vscode-foreground",
-  "--cb-sidebar-bg",
-  "--cb-hover-bg",
-  "--cb-button-dark-background",
-  "--cb-stroke-secondary",
-  "--cb-team-member-card-background",
-  "--cb-markdown-hr-border-color",
-];
-
-// 量测的是原生界面：临时禁用皮肤 <style>（getComputedStyle 同步重算），否则注入的
-// --cb-* 覆盖会伪装成原生支持；finally 里恢复，探测对运行中的皮肤无副作用
-const COMPAT_PROBE_EXPRESSION = `(() => {
-  const style = document.getElementById(${JSON.stringify(STYLE_ID)});
-  if (style) style.disabled = true;
-  try {
-    const body = document.body;
-    const appMarker = body ? body.getAttribute("data-application-name") : null;
-    const found = [];
-    const missing = [];
-    if (body) {
-      const computed = getComputedStyle(body);
-      for (const name of ${JSON.stringify(CB_PROBE_VARS)}) {
-        (computed.getPropertyValue(name).trim() ? found : missing).push(name);
-      }
-    }
-    const viewIds = new Set();
-    const nodes = document.querySelectorAll("[data-view-id]");
-    for (let i = 0; i < nodes.length; i += 1) viewIds.add(nodes[i].getAttribute("data-view-id"));
-    return { appMarker, cbVarCount: found.length, missingCbVars: missing, viewIds: Array.from(viewIds) };
-  } finally {
-    if (style) style.disabled = false;
-  }
-})()`;
-
-// 多 target 聚合：锚点取并集、变量命中取最大、缺失变量取交集（任一窗口健康即可证明原生结构还在）
-export function summarizeCompatProbes(probes) {
-  const viewIds = new Set();
-  let cbVarCount = 0;
-  let missingCbVars = null;
-  let appMarker = null;
-  for (const probe of probes) {
-    if (!probe) continue;
-    if ((probe.cbVarCount ?? 0) > cbVarCount) {
-      cbVarCount = probe.cbVarCount;
-      missingCbVars = probe.missingCbVars ?? [];
-    }
-    for (const id of probe.viewIds ?? []) viewIds.add(id);
-    appMarker ??= probe.appMarker;
-  }
-  missingCbVars ??= [...CB_PROBE_VARS];
-  const missingViewIds = EXPECTED_VIEW_IDS.filter((id) => !viewIds.has(id));
-  const warnings = [];
-  if (appMarker !== "workbuddy") {
-    warnings.push(`body[data-application-name] 为 ${JSON.stringify(appMarker)}（期望 "workbuddy"），变量覆盖块将整体失效`);
-  }
-  if (missingCbVars.length > 0) {
-    warnings.push(`--cb-* 设计变量缺失 ${missingCbVars.length}/${CB_PROBE_VARS.length}：${missingCbVars.join("、")}，全局换色将失效`);
-  }
-  if (missingViewIds.length > 0) {
-    warnings.push(`[data-view-id] 锚点缺失：${missingViewIds.join("、")}，容器透化/磨砂将失效`);
-  }
-  return {
-    ok: warnings.length === 0,
-    appMarker,
-    cbVarCount,
-    cbVarProbed: CB_PROBE_VARS.length,
-    missingCbVars,
-    viewIds: [...viewIds].sort(),
-    missingViewIds,
-    warnings: warnings.map((text) => `WorkBuddy 界面可能已大改版：${text}，请关注仓库更新`),
-  };
-}
-
-// 一次性探测（不等待重试）：WorkBuddy 未以 CDP 端口运行时快速失败，由 doctor 降级展示
-export async function probeRendererCompat({ port, deps = {} }) {
-  const { fetchTargets, Session } = resolveDeps(deps);
-  const targets = await fetchTargets(port);
-  if (targets.length === 0) return { reachable: false, reason: "未发现渲染进程 target（WorkBuddy 未以调试端口运行）" };
-  const probes = await evaluateTargets(targets, COMPAT_PROBE_EXPRESSION, Session);
-  return { reachable: true, targets: targets.length, ...summarizeCompatProbes(probes) };
 }
 
 export function skinStatus({ port, deps = {} }) {

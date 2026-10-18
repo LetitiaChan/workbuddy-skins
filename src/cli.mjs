@@ -1,17 +1,18 @@
 #!/usr/bin/env node
-import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { promisify } from "node:util";
 
 import { validatePort } from "./cdp-client.mjs";
 import { DEFAULT_CDP_PORT, DEFAULT_THEME_ID, EXPECTED_BUNDLE_ID, RENDERER_URL_HINT, resolveStudioPaths } from "./constants.mjs";
-import { applySkin, removeSkin, skinStatus, readSavedActiveSkin, activateSavedSkin, activateSavedNative, probeRendererCompat } from "./injector.mjs";
+import { applySkin, removeSkin, skinStatus, readSavedActiveSkin, activateSavedSkin, activateSavedNative } from "./injector.mjs";
+import { probeRendererCompat } from "./compat-probe.mjs";
+import { findInstalledApp } from "./platform-paths.mjs";
+import { repoUpdateInfo } from "./repo-update.mjs";
 import { readState, writeState } from "./state-store.mjs";
 import { loadTheme } from "./theme-schema.mjs";
 import { createSingleImageTheme, listThemes } from "./theme-store.mjs";
-import { checkReleaseUpdate, readLocalReleaseVersion } from "./update-check.mjs";
+import { checkReleaseUpdate } from "./update-check.mjs";
 import { performReleaseUpdate } from "./release-update.mjs";
 
 // 更新提示的后台等待上限：GitHub API 国内偶发慢，超时就放弃提示（不阻塞命令退出）。
@@ -59,7 +60,8 @@ function defaults(overrides) {
     readStateFile: readState,
     writeStateFile: writeState,
     probeRenderer: probeRendererCompat,
-    repoUpdate: repoUpdateInfo,
+    repoUpdate: () => repoUpdateInfo({ sourceRoot }),
+    findInstalledApp,
     ...overrides,
   };
   // releaseUpdate 依赖 readStateFile/writeStateFile（结果缓存进 state.json），
@@ -74,58 +76,30 @@ function defaults(overrides) {
 
 const exists = (path) => access(path).then(() => true, () => false);
 
-const execFileAsync = promisify(execFile);
-
-async function gitOutput(args, timeoutMs) {
-  const { stdout } = await execFileAsync("git", args, { cwd: sourceRoot, timeout: timeoutMs, windowsHide: true });
-  return stdout.trim();
-}
-
-// 仓库更新提示：zip 用户（有打包写入的 release-version.json）走 GitHub Release 检查；
-// git clone 用户对比本地 HEAD 与远端同分支（分支不存在于远端时回落远端默认分支）。
-// 任何一步失败（无 git、非仓库、离线）都向上抛，由 doctor 降级为 checked:false，不影响报告主体
-async function repoUpdateInfo() {
-  if (await readLocalReleaseVersion({ versionFile: join(sourceRoot, "release-version.json") })) {
-    return checkReleaseUpdate({ sourceRoot, readStateFile: readState, writeStateFile: writeState });
-  }
-  if (!(await exists(join(sourceRoot, ".git")))) return { isRepo: false, checked: false };
-  const [head, branch] = await Promise.all([
-    gitOutput(["rev-parse", "HEAD"], 5000),
-    gitOutput(["rev-parse", "--abbrev-ref", "HEAD"], 5000),
-  ]);
-  const ref = branch && branch !== "HEAD" ? `refs/heads/${branch}` : "HEAD";
-  let remote = await gitOutput(["ls-remote", "origin", ref], 8000);
-  if (!remote) remote = await gitOutput(["ls-remote", "origin", "HEAD"], 8000);
-  const remoteSha = remote.split(/\s+/)[0] ?? "";
-  if (!remoteSha) return { isRepo: true, checked: false, reason: "远端无对应分支" };
-  const updateAvailable = remoteSha !== head;
-  return {
-    isRepo: true,
-    checked: true,
-    branch,
-    head: head.slice(0, 8),
-    remote: remoteSha.slice(0, 8),
-    updateAvailable,
-    ...(updateAvailable ? { hint: "仓库有新版本，运行 git pull 获取最新适配" } : {}),
-  };
-}
-
 // 状态回执只作诊断：写入失败（权限/磁盘）绝不允许打断换肤主流程
 function recordState(deps, patch) {
   return deps.writeStateFile(patch).catch(() => {});
 }
 
 // apply/status 结果附带的新版本提示：后台检查 + 限时等待，离线/超时/无更新都返回 null，
-// 提示是增强项，绝不允许拖慢或打断命令主流程
+// 提示是增强项，绝不允许拖慢或打断命令主流程。
+// 超时 timer 必须在 finally 里清掉：Promise.race 胜出不会取消落败的那个 setTimeout，
+// Node 事件循环要等它到点才退出——实测漏清时 runCli 70ms 返回、进程却 6.5s 才退，
+// 每次 status/apply 白挂 5 秒。写法对齐 cdp-client.mjs 的 awaitBeforeDeadline。
 async function updateHint(deps) {
+  let timer = null;
   try {
     const result = await Promise.race([
       deps.releaseUpdate(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("更新检查超时")), UPDATE_HINT_TIMEOUT_MS)),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("更新检查超时")), UPDATE_HINT_TIMEOUT_MS);
+      }),
     ]);
     return result?.updateAvailable ? { latest: result.latestVersion, url: result.url, hint: result.hint } : null;
   } catch {
     return null;
+  } finally {
+    if (timer !== null) clearTimeout(timer);
   }
 }
 
@@ -150,7 +124,13 @@ export async function runCli(argv, overrides = {}) {
     // Release 自更新：仅 zip 安装生效；git clone 由 repoUpdate 提示 git pull
     return deps.releaseSelfUpdate();
   }
-  if (command === "list") return deps.listThemes({ roots });
+  if (command === "list") {
+    // listThemes 把坏 theme.json 的失败原因挂在非枚举的 errors 上（见 theme-store）。
+    // 有问题时连同清单一起输出，避免「主题莫名消失」只能靠肉眼翻目录排查
+    const themes = await deps.listThemes({ roots });
+    const broken = themes.errors ?? [];
+    return broken.length > 0 ? { themes, broken } : themes;
+  }
   if (command === "create") {
     if (!args.image) throw new Error("create 需要 --image");
     if (!args.name) throw new Error("create 需要 --name");
@@ -183,46 +163,19 @@ export async function runCli(argv, overrides = {}) {
   }
   if (command === "doctor") {
     const port = portFrom(args.port);
-    // 三项诊断互不依赖，并发；各自降级（状态损坏/未运行/离线），绝不让 doctor 整体失败
-    const [state, compat, repo] = await Promise.all([
+    // 四项诊断互不依赖，并发；各自降级（状态损坏/未运行/离线），绝不让 doctor 整体失败
+    const [state, compat, repo, themes] = await Promise.all([
       deps.readStateFile().catch(() => null),
       deps.probeRenderer({ port }).catch((error) => ({ reachable: false, reason: error.message })),
       deps.repoUpdate().catch((error) => ({ checked: false, reason: error.message })),
+      deps.listThemes({ roots }).catch(() => null),
     ]);
-    if (process.platform === "win32") {
-      const candidates = [
-        process.env.WORKBUDDY_EXE,
-        process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, "workbuddy", "WorkBuddy.exe"),
-        process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, "Programs", "workbuddy", "WorkBuddy.exe"),
-        process.env.ProgramFiles && join(process.env.ProgramFiles, "WorkBuddy", "WorkBuddy.exe"),
-        process.env["ProgramFiles(x86)"] && join(process.env["ProgramFiles(x86)"], "WorkBuddy", "WorkBuddy.exe"),
-      ].filter(Boolean);
-      let app = null;
-      for (const c of candidates) {
-        if (await exists(c)) { app = c; break; }
-      }
-      return {
-        platform: "win32",
-        app,
-        appFound: !!app,
-        candidates,
-        cdpPort: port,
-        rendererHint: RENDERER_URL_HINT,
-        installRoot: resolveStudioPaths().installRoot,
-        statePath: resolveStudioPaths().statePath,
-        node: nodeInfo(),
-        compat,
-        repo,
-        state,
-      };
-    }
-    // 非 Windows 按 macOS 布局探测；平台如实上报（Linux 等会显示 appFound:false）
-    const app = "/Applications/WorkBuddy.app";
-    return {
-      platform: process.platform,
-      app,
-      appFound: await exists(app),
-      bundleId: EXPECTED_BUNDLE_ID,
+    // 坏 theme.json 清单（解析失败/缺 id）：这类主题会从列表里静默消失，doctor 必须报出来
+    const brokenThemes = themes?.errors ?? [];
+    // 安装位发现下沉到 platform-paths（platform / env / exists 全可注入，
+    // 非 Windows 机器上也能覆盖 Windows 分支）
+    const install = await deps.findInstalledApp({ exists });
+    const common = {
       cdpPort: port,
       rendererHint: RENDERER_URL_HINT,
       installRoot: resolveStudioPaths().installRoot,
@@ -231,7 +184,14 @@ export async function runCli(argv, overrides = {}) {
       compat,
       repo,
       state,
+      brokenThemes,
     };
+    if (install.platform === "win32") {
+      const { platform, app, appFound, candidates } = install;
+      return { platform, app, appFound, candidates, ...common };
+    }
+    const { platform, app, appFound } = install;
+    return { platform, app, appFound, bundleId: EXPECTED_BUNDLE_ID, ...common };
   }
   throw new Error(`未知命令：${command}`);
 }
@@ -272,10 +232,13 @@ async function applyCommand(deps, roots, args, port) {
     if (!selected) throw new Error(`找不到主题：${themeId}`);
   }
   // 选中主题必须加载成功（失败直接抛出）；其余主题并发加载，坏主题不阻塞换肤、只是不进菜单。
-  // allSettled 保序，菜单顺序与 listThemes 排序一致
-  const loadedTheme = await deps.loadTheme(selected.path);
+  // allSettled 保序，菜单顺序与 listThemes 排序一致。
+  // 透传 listThemes 已解析的 rawManifest（非枚举属性）：loadTheme 据此跳过第二次
+  // readFile + JSON.parse——65 个主题原本要读 130 次 theme.json，一半是重复的
+  const loadedTheme = await deps.loadTheme(selected.path, selected.rawManifest);
   const settled = await Promise.allSettled(
-    themes.map((theme) => (theme.id === themeId ? loadedTheme : deps.loadTheme(theme.path))),
+    themes.map((theme) =>
+      theme.id === themeId ? loadedTheme : deps.loadTheme(theme.path, theme.rawManifest)),
   );
   const menuThemes = settled.filter(({ status }) => status === "fulfilled").map(({ value }) => value);
   const result = await deps.applySkin({ loadedTheme, themes: menuThemes, port, activeId });

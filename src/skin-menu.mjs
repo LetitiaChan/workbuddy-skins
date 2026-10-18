@@ -1,8 +1,12 @@
 import { MAX_ANIMATED_DIMENSION, MAX_THEME_VIDEO_BYTES } from "./constants.mjs";
+import { DEFAULT_COLORS, HEX6 } from "./color.mjs";
 import { BASE64_DECODE_SNIPPET, VIDEO_DB_LITERALS } from "./renderer-snippets.mjs";
+import { COLOR_UTILS_SNIPPET } from "./renderer/color-utils.mjs";
+import { NAV_BUTTONS_SNIPPET } from "./renderer/nav-buttons.mjs";
 
-const HEX_COLOR = /^#[0-9a-f]{3,8}$/i;
-const DEFAULT_ACCENT = "#24c9d7";
+// 构建期入参校验与兜底色统一自 color.mjs（原先本文件各写一份，且 hex 放宽到 3–8 位）
+const HEX_COLOR = HEX6;
+const DEFAULT_ACCENT = DEFAULT_COLORS.accent;
 
 // 菜单脚本在 window 上登记的拆除函数名：重复注入与 pause（removeSkin）都先调它，
 // 断开上一轮的观察者/监听器/视频层，避免多轮注入并存互相改写
@@ -181,15 +185,29 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   // 标记——保持壁纸原样透出，不引入新行为。随 layoutObserver 每帧重判，SPA 路由
   // 切换（DOM 重建）后自动更新
   const PAGE_HOST_SELECTORS = [".teams-container [data-view-id=main-content]", ".teams-main-content", ".main-content", ".claw-agent-chat-pane"];
+  // 上一次命中的会话宿主：用于 O(1) 快路径复验，避免每次调用都重跑 5 次选择器查询
+  // 加 N 次 getBoundingClientRect（强制同步布局）。首个选择器是后代组合器，
+  // Blink 要从右向左匹配全部 [data-view-id=main-content] 再回溯祖先，并不便宜。
+  // 宿主只在 SPA 路由切换时变，不该按帧重算——与 findScrollBox 的复验套路一致。
+  let chatHost = null;
+  const hostQualifies = (el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.width > 400 && rect.height > 300;
+  };
   const detectPage = () => {
     let page = null;
-    if (document.querySelector(".wb-home-page")) page = "home";
-    else {
+    if (document.querySelector(".wb-home-page")) {
+      page = "home";
+      chatHost = null;
+    } else if (chatHost && chatHost.isConnected && hostQualifies(chatHost)) {
+      // 快路径：旧宿主仍在文档且尺寸仍合格，直接续用（1 次布局读取）
+      page = "chat";
+    } else {
+      chatHost = null;
       for (const selector of PAGE_HOST_SELECTORS) {
         const list = document.querySelectorAll(selector);
         for (let i = 0; i < list.length; i++) {
-          const rect = list[i].getBoundingClientRect();
-          if (rect.width > 400 && rect.height > 300) { page = "chat"; break; }
+          if (hostQualifies(list[i])) { chatHost = list[i]; page = "chat"; break; }
         }
         if (page) break;
       }
@@ -207,7 +225,24 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     // reviveVideoLayer 在下方声明：回调只可能在脚本同步执行完之后触发（同 scheduleNavUpdate），无 TDZ 问题
     requestAnimationFrame(() => { repositionQueued = false; reposition(); detectPage(); reviveVideoLayer(); });
   };
-  const layoutObserver = new MutationObserver(() => { scheduleReposition(); scheduleNavUpdate(); });
+  // 布局观察者：驱动按钮重定位、页面探测、视频层自愈与导航显隐。
+  // 必须前置过滤出「元素节点的增删」——观察面是 body 全子树 childList，流式输出时
+  // 每个 token 都会以文本节点插入触发回调，而文本插入不可能改变布局锚点
+  // （.workbuddy-topbar-actions 的位置、宿主容器的存在性、视频层是否被摘除）。
+  // 不过滤的话约 99% 的回调是空转，还各自拉起一帧 rAF 里的若干次 DOM 查询。
+  // 注意：reviveObserver（见文件末尾）早就正确避开了 subtree，这里是同一个坑的另一半。
+  const hasElementChange = (records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) if (node.nodeType === 1) return true;
+      for (const node of record.removedNodes) if (node.nodeType === 1) return true;
+    }
+    return false;
+  };
+  const layoutObserver = new MutationObserver((records) => {
+    if (!hasElementChange(records)) return;
+    scheduleReposition();
+    scheduleNavUpdate();
+  });
   layoutObserver.observe(document.body, { childList: true, subtree: true });
   // 仍挂到 window：回退到旧版本注入时，旧脚本据此断开本轮观察者
   window.__workbuddySkinLayoutObserver = layoutObserver;
@@ -340,7 +375,11 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   // 弹窗挂 root 内（root 无 transform/filter，fixed 仍相对视口），随 root 一并 teardown。
   // 结构：header 固定不滚 + body 独立滚动（滚动条从标题栏下方开始）；
   // 背景/文字色跟随当前主题 surface/text（applyMode 时同步更新，见 paintDialogTone）
-  const HEX_COLOR_RUNTIME = /^#[0-9a-f]{3,8}$/i;
+  // 严格六位：必须与下游 isLightSurface 的正则同口径。原先这里放宽到 3–8 位，
+  // 而 isLightSurface 只认 6 位——一个 3 位值会通过本校验、却在 isLightSurface
+  // 里匹配失败而回退「当作浅色」，给出错误的弹窗文字色。渲染进程内无法 import，
+  // 与 Node 侧 color.mjs 的 HEX6 保持同形。
+  const HEX_COLOR_RUNTIME = /^#[0-9a-f]{6}$/i;
   const overlay = document.createElement("div");
   overlay.style.cssText = "display:none;position:fixed;inset:0;z-index:2147483001;background:rgba(15,20,35,.42);backdrop-filter:blur(6px);align-items:center;justify-content:center;-webkit-app-region:no-drag;app-region:no-drag;";
   const dialog = document.createElement("div");
@@ -490,6 +529,10 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     return match ? match[1] : null;
   };
 
+  // 弹窗文字色的明暗判定。刻意用 Rec.601（0.299/0.587/0.114）而非上方 lumOf 的
+  // Rec.709：Rec.601 更贴近「这块底色看起来亮不亮」的主观感受（绿色权重低一档），
+  // 阈值 140 是配合它调出来的。两者并非笔误，改任一侧都会动到弹窗配色，
+  // 需配合实机核对再动。
   const isLightSurface = (hex) => {
     const m = /^#([0-9a-f]{6})$/i.exec(hex || "");
     if (!m) return true;
@@ -948,58 +991,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     .split(data.sentinels.id).join(themeId)
     .split(data.sentinels.hero).join(heroUrl);
 
-  const hex = (r, g, b) => "#" + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
-  const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
-  const hexToRgb = (value) => {
-    const m = /^#([0-9a-f]{6})$/i.exec(value || "");
-    if (!m) return null;
-    const v = parseInt(m[1], 16);
-    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
-  };
-  const lumOf = (rgb) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-  // 由主色派生浅/深两套面板底色+文字色，运行时按模式挑选（见 effectiveColors）
-  const buildSurfaces = (accentRgb) => ({
-    light: {
-      surface: hex(...mix(accentRgb, [252, 252, 255], 0.92)),
-      text: hex(...mix(accentRgb, [16, 24, 40], 0.82)),
-    },
-    dark: {
-      surface: hex(...mix(accentRgb, [12, 12, 18], 0.86)),
-      text: hex(...mix(accentRgb, [244, 246, 252], 0.85)),
-    },
-  });
-
-  const extractPalette = (canvas) => {
-    const ctx = canvas.getContext("2d");
-    const { data: px } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const buckets = new Map();
-    for (let i = 0; i < px.length; i += 4) {
-      const r = px[i], g = px[i + 1], b = px[i + 2];
-      const max = Math.max(r, g, b), min = Math.min(r, g, b);
-      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      const sat = max === 0 ? 0 : (max - min) / max;
-      if (sat < 0.18 || lum < 24 || lum > 245) continue;   // 灰、过暗、过曝不参与取主色
-      const d = max - min || 1;
-      let h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-      const bucket = Math.round(h) % 6 * 2 + (sat > 0.55 ? 1 : 0);
-      const entry = buckets.get(bucket) ?? { w: 0, r: 0, g: 0, b: 0, h: h * 60 };
-      const weight = sat * sat;
-      entry.w += weight; entry.r += r * weight; entry.g += g * weight; entry.b += b * weight;
-      buckets.set(bucket, entry);
-    }
-    const ranked = [...buckets.values()].sort((a, b2) => b2.w - a.w)
-      .map((e) => ({ rgb: [e.r / e.w, e.g / e.w, e.b / e.w], h: e.h, w: e.w }));
-    const accent = ranked[0]?.rgb ?? [36, 201, 215];
-    const second = ranked.find((e) => Math.abs(e.h - (ranked[0]?.h ?? 0)) > 50)?.rgb
-      ?? mix(accent, [255, 255, 255], 0.35);
-    // 明暗不再由全图平均亮度决定：同一主题生成浅/深两套 surface/text，
-    // 运行时按「自动（主色亮度）/浅色/深色」三选挑选
-    return {
-      accent: hex(...accent),
-      secondary: hex(...second),
-      ...buildSurfaces(accent),
-    };
-  };
+${COLOR_UTILS_SNIPPET}
 
   // Blink 的 CSS 解析器会静默丢弃含超长 data URL 的 background 声明（实测 4MB 动图
   // 必现，整个 background 简写失效背景消失），大体积 hero 统一转 blob: URL 再注入。
@@ -1077,7 +1069,11 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     layer.style.cssText = "position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:1;transition:opacity " + FADE_MS + "ms ease;background:"
       + (surface && chat ? "linear-gradient(0deg, " + veil(50) + ", " + veil(50) + ")," : "")
       + (surface ? "linear-gradient(90deg, " + veil(72) + " 0 14%, transparent 30%),linear-gradient(180deg, transparent 0 70%, " + veil(50) + " 85% 100%)," : "")
-      + "url(" + JSON.stringify(oldHeroUrl) + ") right center / cover no-repeat fixed;";
+    // 末尾不加 background-attachment:fixed —— 本层自身已是 position:fixed;inset:0，
+    // 背景相对元素定位与相对视口定位在几何上完全等价，但 attachment:fixed 会禁止
+    // Chromium 把背景缓存进本层的合成层，450ms 过渡期间每帧都要相对视口重绘整个视口
+    // （叠上 skin-css 的 body 四色 transition，就是换肤瞬间的满帧重绘）。纯冗余、全额代价。
+      + "url(" + JSON.stringify(oldHeroUrl) + ") right center / cover no-repeat;";
     (document.getElementById("root") ?? document.body).appendChild(layer);
     fadeLayer = layer;
     // 双 rAF 提交过渡起点：同帧内 1→0 会被渲染合并成无动画
@@ -1091,10 +1087,30 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
   // Node 端注入时按主题 id 预置进同一个库），blob URL 会话内缓存复用 ----
   const VIDEO_LAYER_CSS = ${JSON.stringify(VIDEO_LAYER_CSS)};
   const MAX_VIDEO_BYTES = ${MAX_THEME_VIDEO_BYTES};
+  // 视频层淡入淡出时长。摘除延时由它派生（+60ms 余量），不再是两处各写死一个数字——
+  // 旧实现 wrapper 内联 .4s 而摘除写死 460，是跨 55 行的隐式契约：改一个忘改另一个，
+  // 视频层会在淡出到 77% 时被硬摘除
+  const VIDEO_FADE_MS = 400;
   let videoLayer = null;
   const videoUrlCache = new Map();
+  // 临时挂上淡变过渡，结束后撤掉。
+  // 不能把 transition 常驻在 wrapper 上：这是个 position:fixed;inset:0 的全视口层、
+  // 内含正在播放的 <video>，而 VIDEO_LAYER_CSS 里 chat 页的 opacity:.35 !important
+  // 会在 data-wb-skin-page 每次翻转时触发一次 400ms 全视口 opacity 动画——
+  // 那意味着每帧重新合成整个视口大小的视频纹理。路由切换时瞬时改不透明度不可感知，
+  // 真正需要淡变的只有「挂载」与「切主题摘除」两个时刻。
+  const withFade = (layer, mutate) => {
+    layer.style.transition = "opacity " + VIDEO_FADE_MS + "ms ease";
+    layer.style.willChange = "opacity";
+    mutate();
+    setTimeout(() => {
+      if (!layer.isConnected) return;
+      layer.style.removeProperty("transition");
+      layer.style.removeProperty("will-change");
+    }, VIDEO_FADE_MS + 60);
+  };
   // fade:true（主题切换路径）时旧视频层 opacity 淡出后再摘除，与 hero 淡出层同步收尾；
-  // 挂载标记立即撤掉（新主题海报帧/底图即时兜底），wrapper 的 .4s transition 已内联
+  // 挂载标记立即撤掉（新主题海报帧/底图即时兜底）
   const releaseVideo = ({ fade = false } = {}) => {
     const layer = videoLayer;
     videoLayer = null;
@@ -1103,8 +1119,8 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     if (!layer) return;
     if (fade && !reducedMotion()) {
       // important：chat 页 VIDEO_LAYER_CSS 的 .35 !important 会压过普通 inline 值
-      layer.style.setProperty("opacity", "0", "important");
-      setTimeout(() => layer.remove(), 460);
+      withFade(layer, () => layer.style.setProperty("opacity", "0", "important"));
+      setTimeout(() => layer.remove(), VIDEO_FADE_MS + 60);
     } else {
       layer.remove();
     }
@@ -1159,7 +1175,8 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
       // 初始 opacity:0（important 压过 chat 页 .35 规则），挂载后撤掉 inline 交由 CSS 规则
       // 接管（chat .35 / home 默认 1），transition 平滑淡入到目标值
       wrapper.className = "wb-skin-video-layer";
-      wrapper.style.cssText = "position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;transition:opacity .4s ease;"
+      // transition 不进 cssText：见 withFade 的说明（常驻会被路由切换反复触发）
+      wrapper.style.cssText = "position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;"
         + (reducedMotion() ? "" : "opacity:0 !important;");
       const video = document.createElement("video");
       video.autoplay = true; video.muted = true; video.loop = true; video.playsInline = true;
@@ -1173,8 +1190,13 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
         + "linear-gradient(180deg, transparent 0 70%, color-mix(in srgb, var(--wb-surface) 50%, transparent) 85% 100%);";
       wrapper.append(video, overlay);
       (document.getElementById("root") ?? document.body).appendChild(wrapper);
-      // 双 rAF 提交过渡起点后撤掉 inline opacity，CSS 规则接管并淡入（已移除则无视觉效果）
-      requestAnimationFrame(() => requestAnimationFrame(() => { wrapper.style.removeProperty("opacity"); }));
+      // 双 rAF 提交过渡起点后撤掉 inline opacity，CSS 规则接管并淡入（已移除则无视觉效果）。
+      // 过渡临时挂、结束即撤，避免常驻 transition 被路由切换反复触发
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (!wrapper.isConnected) return;
+        if (reducedMotion()) { wrapper.style.removeProperty("opacity"); return; }
+        withFade(wrapper, () => wrapper.style.removeProperty("opacity"));
+      }));
       videoLayer = wrapper;
       // 挂载标记：chat 页据此撤掉海报帧底图，避免半透明视频与静态海报叠出重影
       document.body.setAttribute("data-wb-skin-video", "on");
@@ -1558,225 +1580,7 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     else closeDialog();
   });
 
-  // ---- 右侧定位按钮：回到顶部 / 上一个提问 / 下一个提问 / 回到底部 ----
-  // 参考 .workbuddy-themes 运行时的滚动按钮实现移植：WorkBuddy 未暴露稳定的会话
-  // DOM 锚点，滚动容器与提问锚点都走启发式探测。容器按「可滚动 + 宽度≥40% 视口 +
-  // 高度≥200 + 面积最大」挑选并缓存 500ms；提问锚点优先 data-role/class 启发式
-  // （剔除嵌套命中、排除 assistant/bot 类名），兜底取容器最高子节点的直接子项
-  const navRoot = document.createElement("div");
-  // 位置锚定对话框（见 updateNavPlacement），right/bottom 初始值为探测失败时的兜底
-  navRoot.style.cssText = "position:fixed;right:14px;bottom:96px;z-index:2147483000;display:none;flex-direction:column;align-items:center;gap:8px;user-select:none;-webkit-app-region:no-drag;app-region:no-drag;";
-
-  let scrollBox = null;
-  let scrollBoxCachedAt = 0;
-  const preferredScrollBox = () => {
-    const preferred = document.querySelector(".messages-container");
-    return preferred && preferred.scrollHeight > preferred.clientHeight + 20 ? preferred : null;
-  };
-  const findScrollBox = () => {
-    const now = Date.now();
-    // 缓存有效期内且节点仍在文档中直接复用
-    if (scrollBox && scrollBox.isConnected && now - scrollBoxCachedAt < 500) return scrollBox;
-    const preferred = preferredScrollBox();
-    // 过期先做 O(1) 重验证：旧容器仍在文档、仍可滚、且未被更优先的 .messages-container
-    // 取代时直接续期——否则流式输出期间每 500ms 就有一次 querySelectorAll("*") 全文档
-    // 扫描（逐元素 getComputedStyle/布局读取），与合帧减负的初衷相悖
-    if (scrollBox && scrollBox.isConnected && (!preferred || scrollBox === preferred)
-        && scrollBox.scrollHeight > scrollBox.clientHeight + 20) {
-      scrollBoxCachedAt = now;
-      return scrollBox;
-    }
-    scrollBoxCachedAt = now;
-    scrollBox = preferred;
-    if (scrollBox) return scrollBox;
-    let best = null;
-    let bestArea = 0;
-    const viewportWidth = window.innerWidth || 1200;
-    for (const el of document.querySelectorAll("*")) {
-      if (el.scrollHeight <= el.clientHeight + 20) continue;
-      if (!/(auto|scroll|overlay)/.test(getComputedStyle(el).overflowY)) continue;
-      const rect = el.getBoundingClientRect();
-      if (rect.width < 0.4 * viewportWidth || rect.height < 200) continue;
-      const area = rect.width * rect.height;
-      if (area > bestArea) { bestArea = area; best = el; }
-    }
-    if (best) scrollBox = best;
-    return scrollBox;
-  };
-
-  const USER_ANCHOR_SELECTOR = "[data-role=user],[data-author=user],[data-message-role=user],[data-from=user],[class*=user-message],[class*=message-user],[class*=message--user],[class*=is-user],[class*=--user],[class*=_user],[class*=human],[class*=-self],[class*=sender]";
-  const findAnchors = (box) => {
-    let anchors = Array.from(box.querySelectorAll(USER_ANCHOR_SELECTOR))
-      .filter((el) => !/assistant|agent|\bai\b|bot|robot|menu|avatar|trigger|reply|answer|response/i.test(el.getAttribute("class") || ""));
-    // 只留最外层命中：嵌套命中时丢弃被包含者，避免定位到同一条提问的内部碎片
-    anchors = anchors.filter((el) => !anchors.some((other) => other !== el && other.contains(el)));
-    anchors = anchors.filter((el) => el.getBoundingClientRect().height >= 8);
-    if (anchors.length === 0) {
-      // 兜底：容器最高子节点的直接子项（>=2 条才有定位意义），再退到通用消息类
-      let tallest = null;
-      let maxHeight = 0;
-      for (const child of box.children) {
-        if (child.scrollHeight > maxHeight) { maxHeight = child.scrollHeight; tallest = child; }
-      }
-      let candidates = tallest && tallest.children.length >= 2 ? Array.from(tallest.children) : [];
-      if (candidates.length < 2) {
-        const generic = box.querySelectorAll("[class*=message],[class*=msg],[class*=chat-item]");
-        if (generic.length >= 2) candidates = Array.from(generic);
-      }
-      anchors = candidates.filter((el) => el.getBoundingClientRect().height >= 8);
-    }
-    return anchors.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-  };
-
-  // 元素在滚动容器坐标系里的纵向偏移（含当前滚动量）
-  const offsetInBox = (box, el) => Math.round(el.getBoundingClientRect().top - (box.getBoundingClientRect().top - box.scrollTop));
-
-  // rAF 三次缓出 420ms 平滑滚动；用户滚轮/触摸介入立即让出控制权（捕获阶段取消动画）
-  let navAnim = 0;
-  const cancelNavAnim = () => {
-    if (!navAnim) return;
-    cancelAnimationFrame(navAnim);
-    navAnim = 0;
-  };
-  const smoothScrollTo = (box, targetTop) => {
-    cancelNavAnim();
-    const startTop = box.scrollTop;
-    const startAt = performance.now();
-    const easeOut = (t) => 1 - Math.pow(1 - t, 3);
-    const step = () => {
-      navAnim = 0;
-      if (!box.isConnected) return;
-      // 目标每帧重新夹取：流式输出使 scrollHeight 增长时，回到底部能跟随到底
-      const max = Math.max(0, box.scrollHeight - box.clientHeight);
-      const target = Math.max(0, Math.min(targetTop, max));
-      const progress = Math.min(1, (performance.now() - startAt) / 420);
-      box.scrollTop = startTop + (target - startTop) * easeOut(progress);
-      if (progress < 1) navAnim = requestAnimationFrame(step);
-      else box.scrollTop = target;
-    };
-    navAnim = requestAnimationFrame(step);
-  };
-
-  const NAV_TOLERANCE = 4;
-  const scrollToEdge = (direction) => {
-    const box = findScrollBox();
-    if (!box) return;
-    const max = Math.max(0, box.scrollHeight - box.clientHeight);
-    smoothScrollTo(box, direction < 0 ? 0 : max);
-  };
-  const scrollToQuestion = (direction) => {
-    const box = findScrollBox();
-    if (!box) return;
-    const anchors = findAnchors(box);
-    const current = box.scrollTop;
-    let target = null;
-    if (direction < 0) {
-      for (let i = anchors.length - 1; i >= 0; i -= 1) {
-        if (offsetInBox(box, anchors[i]) < current - NAV_TOLERANCE) { target = anchors[i]; break; }
-      }
-    } else {
-      for (const el of anchors) {
-        if (offsetInBox(box, el) > current + NAV_TOLERANCE) { target = el; break; }
-      }
-    }
-    if (target) smoothScrollTo(box, offsetInBox(box, target));
-  };
-
-  const navButton = (label, svgBody, onClick) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.title = label;
-    btn.setAttribute("aria-label", label);
-    btn.style.cssText = "width:32px;height:32px;border-radius:50%;border:1px solid rgba(0,0,0,.12);background:rgba(255,255,255,.85);backdrop-filter:blur(10px);box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;color:#17344f;";
-    // svgBody 为下方静态字面量，无用户输入，innerHTML 安全
-    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + svgBody + "</svg>";
-    btn.addEventListener("click", (event) => {
-      event.stopPropagation();
-      try { onClick(); } catch (error) { logError("定位按钮点击处理失败", label, error); }
-    });
-    return btn;
-  };
-
-  navRoot.append(
-    navButton("\u56de\u5230\u9876\u90e8", '<line x1="6" y1="4.5" x2="18" y2="4.5"></line><polyline points="7 12 12 7 17 12"></polyline><line x1="12" y1="7" x2="12" y2="19"></line>', () => scrollToEdge(-1)),
-    navButton("\u4e0a\u4e00\u4e2a\u63d0\u95ee", '<polyline points="6 14 12 8 18 14"></polyline>', () => scrollToQuestion(-1)),
-    navButton("\u4e0b\u4e00\u4e2a\u63d0\u95ee", '<polyline points="6 10 12 16 18 10"></polyline>', () => scrollToQuestion(1)),
-    navButton("\u56de\u5230\u5e95\u90e8", '<line x1="12" y1="5" x2="12" y2="17"></line><polyline points="7 12 12 17 17 12"></polyline><line x1="6" y1="19.5" x2="18" y2="19.5"></line>', () => scrollToEdge(1)),
-  );
-  document.body.appendChild(navRoot);
-
-  // 边界灰化：已在顶部时「回到顶部/上一个提问」无意义（上方没有更早的提问），
-  // 底部同理；用 disabled 置灰（同时阻断点击），随滚动实时刷新
-  const [navBtnTop, navBtnPrev, navBtnNext, navBtnBottom] = navRoot.children;
-  const setNavEnabled = (btn, enabled) => {
-    btn.disabled = !enabled;
-    btn.style.opacity = enabled ? "1" : ".38";
-    btn.style.cursor = enabled ? "pointer" : "default";
-  };
-  const updateNavEdges = (box) => {
-    const max = Math.max(0, box.scrollHeight - box.clientHeight);
-    const atTop = box.scrollTop <= NAV_TOLERANCE;
-    const atBottom = box.scrollTop >= max - NAV_TOLERANCE;
-    setNavEnabled(navBtnTop, !atTop);
-    setNavEnabled(navBtnPrev, !atTop);
-    setNavEnabled(navBtnNext, !atBottom);
-    setNavEnabled(navBtnBottom, !atBottom);
-  };
-
-  // 显隐与定位：容器可滚才显示；scroll 捕获监听 + layoutObserver（见上）双路驱动，均按
-  // rAF 合帧。位置锚定对话框（输入框）上方右侧——内容列会随消息布局漂移，输入框是
-  // 会话页最稳定的地标；底边固定在输入框顶上方 12px，右缘与输入框右缘外侧 6px 对齐
-  const findComposer = () => {
-    let best = null;
-    let bestWidth = 0;
-    const viewportHeight = window.innerHeight || 800;
-    for (const el of document.querySelectorAll("textarea,[contenteditable=true],[contenteditable=''],[class*=composer],[class*=chat-input],[class*=input-area]")) {
-      const r = el.getBoundingClientRect();
-      if (r.width < 200 || r.height < 20) continue;
-      if (r.top < viewportHeight * 0.4) continue; // 输入框应在视口下半部
-      if (r.width > bestWidth) { bestWidth = r.width; best = r; }
-    }
-    return best;
-  };
-  const updateNavPlacement = () => {
-    const composer = findComposer();
-    if (!composer) {
-      navRoot.style.right = "14px";
-      navRoot.style.bottom = "96px";
-      return;
-    }
-    navRoot.style.right = Math.max(-6, Math.round(window.innerWidth - composer.right - 6)) + "px";
-    const bottom = Math.round(window.innerHeight - composer.top + 12);
-    // 上下限：不低于 8px（输入框贴底时），不高于视口高减菜单高（异常布局时防出顶）
-    navRoot.style.bottom = Math.min(Math.max(8, bottom), window.innerHeight - 160) + "px";
-  };
-  let navUpdateQueued = false;
-  const updateNavVisibility = () => {
-    // 主页（欢迎页）不显示：欢迎区内容列可滚，会被 findScrollBox 兜底扫描误命中。
-    // 反向门控——按主页地标（标题头/主页容器/空会话占位）判定，进入会话后这些节点消失
-    if (document.querySelector(".wb-home-page,.wb-home-header,.colleague-chat-empty-profile")) {
-      navRoot.style.display = "none";
-      return;
-    }
-    const box = findScrollBox();
-    const show = !!box && box.scrollHeight > box.clientHeight + 20;
-    if (show) {
-      updateNavPlacement();
-      updateNavEdges(box);
-    }
-    navRoot.style.display = show ? "flex" : "none";
-  };
-  const scheduleNavUpdate = () => {
-    if (navUpdateQueued) return;
-    navUpdateQueued = true;
-    requestAnimationFrame(() => { navUpdateQueued = false; updateNavVisibility(); });
-  };
-  document.addEventListener("scroll", scheduleNavUpdate, true);
-  window.addEventListener("resize", scheduleNavUpdate);
-  // 用户滚轮/触摸滚动时取消进行中的定位动画，避免与动画抢滚动条
-  document.addEventListener("wheel", cancelNavAnim, true);
-  document.addEventListener("touchstart", cancelNavAnim, true);
-  scheduleNavUpdate();
+${NAV_BUTTONS_SNIPPET}
 
   // 本轮注入的完整拆除：重复注入（脚本开头）与 pause（removeSkin）都会调用。
   // 只拆运行时资源，不动 <style>（重复注入复用同一节点、pause 由 removeSkin 自行移除）；

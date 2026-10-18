@@ -3,16 +3,14 @@
 // --cb-* 设计变量系统（60+ 个），override 它们即可全局换色；#root 作背景图层。
 // 不使用 CSS module 哈希类名（._grid_xxx），只用稳定锚点。
 
-const DEFAULT_COLORS = {
-  accent: "#24c9d7",
-  secondary: "#ef8fd3",
-  surface: "#f7fbff",
-  text: "#17344f",
-};
+import { DEFAULT_COLORS, HEX6 } from "./color.mjs";
 
+// 严格 6 位 hex：所有调用点传的都是 normalizeColors 归一后的值或 6 位哨兵
+// （CSS_SENTINELS 的四色），原先放宽到 3–8 位的分支不可达，属伪装成灵活性的死代码。
+// 与 theme-schema 共用 color.mjs 的 HEX6，不再两套口径。
 function color(value, fallback) {
   const result = value ?? fallback;
-  if (!/^#[0-9a-f]{3,8}$/i.test(result)) throw new Error(`无效主题颜色：${result}`);
+  if (!HEX6.test(result)) throw new Error(`无效主题颜色：${result}`);
   return result;
 }
 
@@ -379,8 +377,13 @@ ${buildVariableOverrides(colors)}
   /* hero 只内联一次：自定义属性承载 url()，本规则与下方 chat 降噪规则经 var() 复用——
      hero 普遍数百 KB（base64 再膨胀 4/3），重复一份会让每条主题 CSS 体积近似翻倍，
      65+ 主题全部内联进菜单脚本时 payload 翻倍。菜单脚本的 heroOf/thumbOf 正则从
-     CSS 文本提取首个 url(data:image...)，本声明即唯一命中点，提取链路不受影响 */
-  --wb-hero: url(${JSON.stringify(heroDataUrl)});
+     CSS 文本提取首个 url(data:image...)，本声明即唯一命中点，提取链路不受影响。
+     直接加引号而非 JSON.stringify：data URL 的字母表是 base64 的 [A-Za-z0-9+/=]
+     加上 "data:<mime>;base64," 前缀，不含任何需要 JSON 转义的字符，
+     走一遍 JSON.stringify 等于对数百 KB 字符串白扫一次再拷一份
+     （injector 的分块上传早就用了这个判断，这里是漏掉的另一半）。
+     hero 来源是本地读盘 + Buffer.toString("base64")，不存在注入引号的可能 */
+  --wb-hero: url("${heroDataUrl}");
   /* 左遮罩收窄降强度：只托住侧边栏宽度（0→14%），72% 强度，30% 处全透明；
      下遮罩收窄到 85%→100%，强度降到 50%，四周大面积透出壁纸；
      遮罩色用 --wb-veil（掺 accent 带色相），压暗不变但不把壁纸洗灰 */

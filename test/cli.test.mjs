@@ -163,6 +163,54 @@ test("status：有新版本时包装为 { targets, update }；无更新保持原
   assert.deepEqual(plain, statusResult);
 });
 
+test("updateHint：releaseUpdate 先返回时清掉超时 timer，不残留未引用句柄", async () => {
+  // 回归「Promise.race 胜出后落败的 setTimeout 未 clearTimeout」——
+  // 该 timer 会把 Node 事件循环顶住到点，实测曾让 runCli 70ms 返回、进程 6.5s 才退。
+  // 这里直接拦 setTimeout/clearTimeout 计数：发起的每个 timer 都必须被清掉。
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  const live = new Set();
+  globalThis.setTimeout = (fn, ms, ...rest) => {
+    const handle = realSet(fn, ms, ...rest);
+    live.add(handle);
+    return handle;
+  };
+  globalThis.clearTimeout = (handle) => {
+    live.delete(handle);
+    return realClear(handle);
+  };
+  try {
+    const skinStatus = async () => [];
+    await runCli(["status"], { skinStatus, releaseUpdate: async () => updateStub });
+    assert.equal(live.size, 0, `应清掉全部超时 timer，残留 ${live.size} 个`);
+  } finally {
+    globalThis.setTimeout = realSet;
+    globalThis.clearTimeout = realClear;
+    live.forEach((h) => realClear(h));
+  }
+});
+
+test("list：坏 theme.json 存在时连同 broken 清单一起返回，否则只返回数组", async () => {
+  const good = Object.assign([{ id: "a", name: "A" }], {});
+  Object.defineProperty(good, "errors", { value: [], enumerable: false });
+  const plain = await runCli(["list"], {
+    bundledThemesRoot: "b", userThemesRoot: "u", listThemes: async () => good,
+  });
+  assert.ok(Array.isArray(plain), "无坏主题时应直接返回数组");
+
+  const withBroken = Object.assign([{ id: "a", name: "A" }], {});
+  Object.defineProperty(withBroken, "errors", {
+    value: [{ path: "/themes/oops", reason: "Unexpected token" }],
+    enumerable: false,
+  });
+  const reported = await runCli(["list"], {
+    bundledThemesRoot: "b", userThemesRoot: "u", listThemes: async () => withBroken,
+  });
+  assert.equal(reported.broken.length, 1, "坏主题应被报出而非静默消失");
+  assert.equal(reported.broken[0].path, "/themes/oops");
+  assert.deepEqual(reported.themes.map((t) => t.id), ["a"]);
+});
+
 test("pause：记录 lastPause（removed 数）", async () => {
   const spy = stateSpy();
   const result = await runCli(["pause"], {

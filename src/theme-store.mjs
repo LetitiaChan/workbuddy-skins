@@ -1,44 +1,13 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 
 import { IMAGE_EXTENSIONS, MAX_ANIMATED_DIMENSION, THEME_SCHEMA_VERSION } from "./constants.mjs";
+import { DEFAULT_COLORS } from "./color.mjs";
+import { probeAnimatedSize } from "./media-probe.mjs";
 
 // createSingleImageTheme 原子写入用的临时目录后缀；listThemes 据此跳过残留的半成品
 const TEMP_DIR_MARKER = ".tmp-";
-
-// 只读文件头探测动图分辨率，超限拒绝（动图不经压缩直接注入，需卡上限）
-// GIF：宽高在头部 6-9 字节（LE uint16）；注意此处不分辨单帧/多帧，GIF 一律按动图处理
-// （当前内置主题均为 WebP，无实际影响；仅影响自定义 GIF 的「动图」标注与尺寸上限）；
-// 动态 WebP：VP8X chunk 画布尺寸在 24-29 字节
-// （24 位 LE，存值 = 实际 - 1），flags 字节 bit 0x02 为动画标记；
-// 动态 AVIF：ftyp 主品牌为 avis（静态为 avif），宽高在 meta 内的 ispe box
-// （BE uint32 宽高，位于 "ispe" 标记 +8/+12 处），在前 4KB 内搜索即可覆盖常规文件
-export async function probeAnimatedSize(imagePath, extension) {
-  if (![".gif", ".webp", ".avif", ".avifs"].includes(extension)) return null;
-  const handle = await open(imagePath, "r");
-  try {
-    const header = Buffer.alloc(4096);
-    const { bytesRead } = await handle.read(header, 0, 4096, 0);
-    if (extension === ".gif") {
-      if (bytesRead < 10 || header.toString("latin1", 0, 3) !== "GIF") return null;
-      return { width: header.readUInt16LE(6), height: header.readUInt16LE(8) };
-    }
-    if (extension === ".webp") {
-      if (bytesRead < 30) return null;
-      if (header.toString("latin1", 0, 4) !== "RIFF" || header.toString("latin1", 8, 12) !== "WEBP") return null;
-      if (header.toString("latin1", 12, 16) !== "VP8X" || !(header[20] & 0x02)) return null; // 静态 WebP 不限制
-      return { width: 1 + header.readUIntLE(24, 3), height: 1 + header.readUIntLE(27, 3) };
-    }
-    if (bytesRead < 12 || header.toString("latin1", 4, 8) !== "ftyp") return null;
-    if (header.toString("latin1", 8, 12) !== "avis") return null; // 静态 AVIF 不限制
-    const ispe = header.indexOf("ispe", 12, "latin1");
-    if (ispe < 0 || ispe + 16 > bytesRead) return null;
-    return { width: header.readUInt32BE(ispe + 8), height: header.readUInt32BE(ispe + 12) };
-  } finally {
-    await handle.close();
-  }
-}
 
 function slugify(value) {
   const slug = value
@@ -81,10 +50,11 @@ export async function createSingleImageTheme({ imagePath, name: rawName, storeRo
     name,
     hero,
     colors: {
-      accent: colors.accent ?? "#24c9d7",
-      secondary: colors.secondary ?? "#ef8fd3",
-      surface: colors.surface ?? "#f7fbff",
-      text: colors.text ?? "#17344f",
+      // 缺省四色统一自 color.mjs，不再内联字面量（曾与 theme-schema 的默认值分叉）
+      accent: colors.accent ?? DEFAULT_COLORS.accent,
+      secondary: colors.secondary ?? DEFAULT_COLORS.secondary,
+      surface: colors.surface ?? DEFAULT_COLORS.surface,
+      text: colors.text ?? DEFAULT_COLORS.text,
     },
     copy: null,
   };
@@ -104,40 +74,77 @@ export async function createSingleImageTheme({ imagePath, name: rawName, storeRo
   return { id, path: destination, manifest };
 }
 
+// theme.json 解析缓存，键为绝对路径，用 mtimeMs + size 做失效判定。
+// 一次 CLI 调用里 listThemes 会被 apply / doctor 各走一遍（见 cli 的 Promise.all），
+// 65 个主题每轮就是 65 次 readFile + 65 次 JSON.parse；文件没动时纯属重复。
+// 刻意不设容量上限：键数等于主题目录数（几十个量级），且 CLI 是短生命周期进程。
+// mtimeMs 与 size 同时比对，规避某些文件系统 mtime 精度只到秒、同秒内改动不被察觉。
+const manifestCache = new Map();
+
+async function readManifest(dir) {
+  const file = join(dir, "theme.json");
+  const info = await stat(file);
+  const cached = manifestCache.get(file);
+  if (cached && cached.mtimeMs === info.mtimeMs && cached.size === info.size) {
+    return cached.manifest;
+  }
+  const manifest = JSON.parse(await readFile(file, "utf8"));
+  manifestCache.set(file, { mtimeMs: info.mtimeMs, size: info.size, manifest });
+  return manifest;
+}
+
+// 返回 { manifests, errors }：坏 theme.json 不再静默消失。
+// 旧实现对解析异常一律 return null，用户看到的只是「主题从列表里不见了」——
+// 没有日志、没有 warning、doctor 也不报告，少一个逗号就得靠肉眼翻目录。
+// 现在把失败原因收集起来交给上层（list/doctor）展示，列表本身仍然容错不中断。
 async function readRootManifests(root) {
   let entries;
   try {
     entries = await readdir(root, { withFileTypes: true });
   } catch (error) {
-    if (error.code === "ENOENT") return [];
+    if (error.code === "ENOENT") return { manifests: [], errors: [] };
     throw error;
   }
-  const manifests = await Promise.all(
+  const results = await Promise.all(
     entries
       .filter((entry) => entry.isDirectory() && !entry.name.includes(TEMP_DIR_MARKER))
       .map(async (entry) => {
         const path = join(root, entry.name);
         try {
-          const manifest = JSON.parse(await readFile(join(path, "theme.json"), "utf8"));
+          const manifest = await readManifest(path);
           // 只做列表所需的最小校验（id 必须是字符串）；完整校验留给 loadTheme
-          if (manifest === null || typeof manifest !== "object" || typeof manifest.id !== "string") return null;
-          return { ...manifest, path };
-        } catch {
-          // A half-copied folder is ignored so listing remains fast and useful.
-          return null;
+          if (manifest === null || typeof manifest !== "object" || typeof manifest.id !== "string") {
+            return { error: { path, reason: "theme.json 缺少字符串类型的 id" } };
+          }
+          const entryObj = { ...manifest, path };
+          // 原始 manifest 挂非枚举属性：apply 路径紧接着要对每个主题调 loadTheme 做完整
+          // 校验，透传这份已解析的对象可省掉第二次 readFile + JSON.parse（见 loadTheme 注释）。
+          // 非枚举是为了不污染调用方的 map/JSON 序列化，也不与未来新增的 schema 字段撞名。
+          Object.defineProperty(entryObj, "rawManifest", { value: manifest, enumerable: false });
+          return { manifest: entryObj };
+        } catch (error) {
+          // 目录里没有 theme.json 属于正常情况（半拷贝中的文件夹、非主题目录），不报告；
+          // 有文件但读不了/解析失败才是真问题（语法错误、权限、编码），必须浮出来
+          if (error.code === "ENOENT") return {};
+          return { error: { path, reason: error instanceof Error ? error.message : String(error) } };
         }
       }),
   );
-  return manifests.filter(Boolean);
+  return {
+    manifests: results.map((r) => r.manifest).filter(Boolean),
+    errors: results.map((r) => r.error).filter(Boolean),
+  };
 }
 
 // roots 按优先级排列（cli 传入 [内置, 用户]）：同 id 只保留第一个出现的，
-// 否则重复 id 会进入菜单，行 Map 互相覆盖、切换命中错误主题
+// 否则重复 id 会进入菜单，行 Map 互相覆盖、切换命中错误主题。
+// 返回数组（向后兼容既有调用方），坏主题清单挂在非枚举的 errors 属性上——
+// 既不影响 map/filter/JSON 序列化，又让 list/doctor 能取到诊断信息。
 export async function listThemes({ roots }) {
   const perRoot = await Promise.all(roots.map(readRootManifests));
   const seen = new Set();
   const themes = [];
-  for (const manifest of perRoot.flat()) {
+  for (const manifest of perRoot.flatMap((r) => r.manifests)) {
     if (seen.has(manifest.id)) continue;
     seen.add(manifest.id);
     themes.push(manifest);
@@ -146,5 +153,10 @@ export async function listThemes({ roots }) {
   // （name 缺失/非字符串时回退 id，避免 localeCompare 抛 TypeError 让整个 list 失败）
   const rank = (theme) => (Number.isFinite(theme.order) ? theme.order : 0);
   const label = (theme) => (typeof theme.name === "string" ? theme.name : theme.id);
-  return themes.sort((a, b) => rank(a) - rank(b) || label(a).localeCompare(label(b)));
+  const sorted = themes.sort((a, b) => rank(a) - rank(b) || label(a).localeCompare(label(b)));
+  Object.defineProperty(sorted, "errors", {
+    value: perRoot.flatMap((r) => r.errors),
+    enumerable: false,
+  });
+  return sorted;
 }

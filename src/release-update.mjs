@@ -92,9 +92,14 @@ export async function performReleaseUpdate({ sourceRoot, check, fetchImpl } = {}
     await mkdir(unpackDir);
     await downloadZip({ url: result.zipUrl, dest: zipPath, fetchImpl });
     await extractZip(zipPath, unpackDir);
-    // 防错版：zip 内版本号必须与 API 报告一致，避免代理缓存拿到旧包却声称新版
+    // 防错版：zip 内版本号必须与 API 报告一致，避免代理缓存拿到旧包却声称新版。
+    // 读不到版本号（文件缺失/损坏/非法 JSON）必须视为校验失败——若在此降级放行，
+    // 代理返回的旧包或被改造的包会被静默安装，恰好绕开这道校验要防的攻击面。
     const zipVersion = await readUnpackedVersion(unpackDir);
-    if (zipVersion && zipVersion !== result.latestVersion) {
+    if (!zipVersion) {
+      throw new Error("zip 内缺少可读的 src/release-version.json，无法校验版本，已中止安装");
+    }
+    if (zipVersion !== result.latestVersion) {
       throw new Error(`zip 内版本 ${zipVersion} 与 Release 标记 ${result.latestVersion} 不一致`);
     }
     // 落位：解压出的条目（src/scripts/themes/...）整体移入目标目录

@@ -39,10 +39,19 @@ export async function readLocalVersion({ sourceRoot } = {}) {
   const release = await readLocalReleaseVersion({ versionFile: join(sourceRoot, "release-version.json") });
   if (release) return release;
   try {
-    // zip 包内 sourceRoot 指向 src/，package.json 在其上一级；git 检出时 sourceRoot 即仓库根
-    const raw = await readFile(join(sourceRoot, "package.json"), "utf8").catch(() =>
-      readFile(join(sourceRoot, "..", "package.json"), "utf8"));
-    const parsed = JSON.parse(raw.replace(/^﻿/, ""));
+    // 两种布局：git 检出时 sourceRoot 即仓库根，package.json 就在其下；
+    // zip 包内 sourceRoot 指向 src/，package.json 在上一级。
+    // 顺序敏感：原实现先试 sourceRoot/package.json 再 .catch 回退上一级，
+    // 而 git 检出（开发与自建的常态）下第一次必然 ENOENT——每次 apply 白付一次
+    // 系统调用加一次带完整栈的异常构造。改为并发读两处、取先命中的那个，
+    // 两种布局都只走一轮，且不依赖哪种更常见。
+    const candidates = [join(sourceRoot, "package.json"), join(sourceRoot, "..", "package.json")];
+    const results = await Promise.all(
+      candidates.map((file) => readFile(file, "utf8").then((text) => text, () => null)),
+    );
+    const raw = results.find((text) => text !== null);
+    if (raw === undefined) return null;
+    const parsed = JSON.parse(raw.replace(/^\uFEFF/, ""));
     return typeof parsed?.version === "string" && parsed.version ? parsed.version : null;
   } catch {
     return null;

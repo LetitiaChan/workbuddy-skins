@@ -4,18 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { MENU_INJECT_TIMEOUT_MS } from "../src/constants.mjs";
 import {
   activateSavedNative,
   activateSavedSkin,
   applySkin,
-  ensureRendererVideos,
-  probeRendererCompat,
   readSavedActiveSkin,
   removeSkin,
   skinStatus,
-  summarizeCompatProbes,
   uploadRendererVideo,
 } from "../src/injector.mjs";
+// doctor 兼容性探测已拆到 compat-probe.mjs（与注入编排零耦合），测试随之改导入源
+import { probeRendererCompat, summarizeCompatProbes } from "../src/compat-probe.mjs";
 
 // 假 CDP Session：按表达式特征分流返回值，并记录完整调用序列
 class FakeSession {
@@ -23,6 +23,7 @@ class FakeSession {
     this.url = url;
     this.options = options;
     this.calls = [];
+    this.callOptions = [];
     this.closed = false;
   }
 
@@ -34,8 +35,9 @@ class FakeSession {
     this.closed = true;
   }
 
-  async evaluate(expression) {
+  async evaluate(expression, options = {}) {
     this.calls.push(expression);
+    this.callOptions.push(options);
     if (this.options.failEvaluate) throw new Error("renderer navigated");
     if (this.options.failVideo && expression.includes('objectStore("videos")')) throw new Error("video timed out");
     // rendererVideoSize：读 IndexedDB 里已存视频的字节数
@@ -102,81 +104,6 @@ test("uploadRendererVideo：优先原生 Uint8Array.fromBase64，带 atob 回退
   assert.ok(chunkCall.includes("setTimeout(resolve, 0)"));
 });
 
-test("ensureRendererVideos：渲染进程已有同尺寸视频时跳过上传（stat 判重）", async () => {
-  await withTempDir(async (dir) => {
-    const videoPath = join(dir, "hero.mp4");
-    await writeFile(videoPath, Buffer.alloc(1024, 7));
-    const { Session, sessions } = sessionFactory({ storedSize: 1024 });
-    const warnings = await ensureRendererVideos({
-      targets: [target("t1")],
-      Session,
-      entries: [{ kind: "video", id: "demo", videoPath }],
-    });
-    assert.deepEqual(warnings, []);
-    assert.equal(sessions.length, 1);
-    assert.equal(sessions[0].chunkPushes(), 0);
-  });
-});
-
-test("ensureRendererVideos：尺寸不一致时执行分块上传", async () => {
-  await withTempDir(async (dir) => {
-    const videoPath = join(dir, "hero.mp4");
-    await writeFile(videoPath, Buffer.alloc(1024, 7));
-    const { Session, sessions } = sessionFactory({ storedSize: 0, blobSize: 1024 });
-    const warnings = await ensureRendererVideos({
-      targets: [target("t1")],
-      Session,
-      entries: [{ kind: "video", id: "demo", videoPath }],
-    });
-    assert.deepEqual(warnings, []);
-    assert.equal(sessions[0].chunkPushes(), 1);
-  });
-});
-
-test("ensureRendererVideos：单个 target 失败只记警告，不阻塞其余 target", async () => {
-  await withTempDir(async (dir) => {
-    const videoPath = join(dir, "hero.mp4");
-    await writeFile(videoPath, Buffer.alloc(1024, 7));
-    const { Session, sessions } = sessionFactory(
-      { storedSize: 0, blobSize: 1024 },
-      { failUrls: new Set(["ws://127.0.0.1:9223/t1"]) },
-    );
-    const warnings = await ensureRendererVideos({
-      targets: [target("t1"), target("t2")],
-      Session,
-      entries: [{ kind: "video", id: "demo", videoPath }],
-    });
-    assert.equal(sessions.length, 2);
-    assert.equal(warnings.length, 1);
-    assert.match(warnings[0], /t1/);
-    assert.match(warnings[0], /renderer navigated/);
-    assert.equal(sessions[1].chunkPushes(), 1); // 第二个 target 正常上传
-  });
-});
-
-test("ensureRendererVideos：本地视频文件缺失时降级为警告而非抛错", async () => {
-  const { Session, sessions } = sessionFactory();
-  const warnings = await ensureRendererVideos({
-    targets: [target("t1")],
-    Session,
-    entries: [{ kind: "video", id: "demo", videoPath: join(tmpdir(), "wss-no-such-file.mp4") }],
-  });
-  assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /读取内置视频文件失败/);
-  assert.equal(sessions.length, 0);
-});
-
-test("ensureRendererVideos：无视频主题时不触碰任何 target", async () => {
-  const { Session, sessions } = sessionFactory();
-  const warnings = await ensureRendererVideos({
-    targets: [target("t1")],
-    Session,
-    entries: [{ kind: "animated", id: "demo" }],
-  });
-  assert.deepEqual(warnings, []);
-  assert.equal(sessions.length, 0);
-});
-
 // applySkin 的最小依赖：一个视频主题 + 一个图片主题，临时目录内真实文件
 async function withThemes(fn) {
   return withTempDir(async (dir) => {
@@ -189,6 +116,76 @@ async function withThemes(fn) {
     return fn({ image, video });
   });
 }
+
+// 视频预置的覆盖面：原先这 5 个场景测的是 ensureRendererVideos，但那个函数虽 export
+// 却零生产调用——applySkin 内联复刻了它的逻辑且失败策略不同（它放弃，applySkin 关会话重建
+// 后重试）。即测试在验证一条没人走的路。现已删除死代码，改为对 applySkin 的真实路径断言。
+test("applySkin：渲染进程已有同尺寸视频时跳过上传（stat 判重）", async () => {
+  await withThemes(async ({ image, video }) => {
+    const { Session, sessions } = sessionFactory({ storedSize: 1024 });
+    const result = await applySkin({
+      loadedTheme: image,
+      themes: [image, video],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    assert.deepEqual(result.videoWarnings, []);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].chunkPushes(), 0, "尺寸一致应完全跳过分块上传");
+  });
+});
+
+test("applySkin：渲染进程视频尺寸不一致时执行分块上传", async () => {
+  await withThemes(async ({ image, video }) => {
+    const { Session, sessions } = sessionFactory({ storedSize: 0, blobSize: 1024 });
+    const result = await applySkin({
+      loadedTheme: image,
+      themes: [image, video],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    assert.deepEqual(result.videoWarnings, []);
+    assert.equal(sessions[0].chunkPushes(), 1);
+  });
+});
+
+test("applySkin：本地视频文件缺失时降级为警告，菜单照常注入", async () => {
+  await withThemes(async ({ image }) => {
+    const brokenVideo = {
+      manifest: { id: "vid", name: "Vid", colors: {} },
+      heroPath: join(tmpdir(), "wss-no-such-file.mp4"),
+      posterPath: image.heroPath,
+    };
+    const { Session, sessions } = sessionFactory();
+    const result = await applySkin({
+      loadedTheme: image,
+      themes: [image, brokenVideo],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    assert.equal(result.videoWarnings.length, 1);
+    assert.match(result.videoWarnings[0], /读取内置视频文件失败/);
+    // 视频失败不阻塞主流程：菜单仍要注入成功
+    assert.equal(result.applied, 1);
+    assert.ok(sessions[0].lastCall().includes("__workbuddySkinTeardown"));
+  });
+});
+
+test("applySkin：无视频主题时不发起任何 IndexedDB 调用，只注入菜单", async () => {
+  await withThemes(async ({ image }) => {
+    const { Session, sessions } = sessionFactory();
+    const result = await applySkin({
+      loadedTheme: image,
+      themes: [image],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    assert.deepEqual(result.videoWarnings, []);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].calls.length, 1, "应只有菜单注入这一次 evaluate");
+    assert.ok(sessions[0].calls[0].includes("__workbuddySkinTeardown"));
+  });
+});
 
 test("applySkin：每个 target 一条会话，视频预置与菜单注入复用同一连接", async () => {
   await withThemes(async ({ image, video }) => {
@@ -208,6 +205,28 @@ test("applySkin：每个 target 一条会话，视频预置与菜单注入复用
       assert.ok(session.lastCall().includes("__workbuddySkinTeardown"));
       assert.ok(session.closed);
     }
+  });
+});
+
+test("applySkin：菜单注入显式给足超时预算（MB 级表达式不能走 CDP 默认 5s）", async () => {
+  await withThemes(async ({ image, video }) => {
+    const { Session, sessions } = sessionFactory({ storedSize: 1024 });
+    await applySkin({
+      loadedTheme: image,
+      themes: [image, video],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    const session = sessions[0];
+    // 菜单注入是最后一次 evaluate（teardown 全局名是其特征）
+    const menuIdx = session.calls.findLastIndex((c) => c.includes("__workbuddySkinTeardown"));
+    assert.ok(menuIdx >= 0, "应有菜单注入调用");
+    assert.equal(
+      session.callOptions[menuIdx]?.timeoutMs,
+      MENU_INJECT_TIMEOUT_MS,
+      `菜单注入须显式传 timeoutMs=${MENU_INJECT_TIMEOUT_MS}，实际 ${JSON.stringify(session.callOptions[menuIdx])}`,
+    );
+    assert.ok(MENU_INJECT_TIMEOUT_MS >= 30_000, "预算应不低于 30s");
   });
 });
 

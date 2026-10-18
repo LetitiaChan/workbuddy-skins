@@ -124,6 +124,49 @@ test("performReleaseUpdate：zip 内版本与 API 不一致时拒绝落位", asy
   });
 });
 
+// zip 内不含 src/release-version.json（或内容损坏）的变体：用于验证防错版不降级
+async function makeZipWithoutVersion(dir, { corrupt = false } = {}) {
+  const staging = join(dir, "staging-nv");
+  await mkdir(join(staging, "src"), { recursive: true });
+  await mkdir(join(staging, "scripts"), { recursive: true });
+  if (corrupt) await writeFile(join(staging, "src", "release-version.json"), "{ not json");
+  await writeFile(join(staging, "src", "cli.mjs"), "// placeholder\n");
+  await writeFile(join(staging, "scripts", "apply.ps1"), "# placeholder\n");
+  const zipPath = join(dir, `release-nv${corrupt ? "-corrupt" : ""}.zip`);
+  await execFileAsync("powershell", [
+    "-NoProfile", "-NonInteractive", "-Command",
+    `Compress-Archive -Force -Path (Join-Path $env:WB_STG 'src'), (Join-Path $env:WB_STG 'scripts') -DestinationPath $env:WB_ZIP`,
+  ], { env: { ...process.env, WB_STG: staging, WB_ZIP: zipPath }, windowsHide: true });
+  return zipPath;
+}
+
+// 防错版校验不得因「读不到版本号」而降级放行：否则代理返回的旧包/被改造的包
+// 会被静默安装，恰好绕过这道校验要防的攻击面
+for (const [label, opts] of [["缺失", {}], ["损坏", { corrupt: true }]]) {
+  test(`performReleaseUpdate：zip 内版本号${label}时拒绝落位（防错版不降级）`, async () => {
+    await withTempDir(async (dir) => {
+      const oldSrc = join(dir, "workbuddy-skins", "src");
+      await mkdir(oldSrc, { recursive: true });
+      await writeFile(join(oldSrc, "release-version.json"), '{"version":"v1.0.0"}');
+      const zipPath = await makeZipWithoutVersion(dir, opts);
+
+      await assert.rejects(
+        performReleaseUpdate({
+          sourceRoot: oldSrc,
+          check: async () => ({
+            checked: true, updateAvailable: true, latestVersion: "v2.0.0",
+            url: "https://x", zipUrl: "https://x/release.zip",
+          }),
+          fetchImpl: zipFetch(zipPath),
+        }),
+        /无法校验版本/,
+      );
+      // 并列新目录不应被创建（校验在落位之前）
+      await assert.rejects(readFile(join(dir, "workbuddy-skins-v2.0.0", "src", "cli.mjs"), "utf8"));
+    });
+  });
+}
+
 test("performReleaseUpdate：下载内容非 zip（拦截页）时报错", async () => {
   await withTempDir(async (dir) => {
     const oldSrc = join(dir, "workbuddy-skins", "src");

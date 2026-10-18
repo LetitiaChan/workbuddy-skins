@@ -3,6 +3,8 @@ import test from "node:test";
 
 import { buildSkinCss } from "../src/skin-css.mjs";
 import { buildSkinMenuScript } from "../src/skin-menu.mjs";
+import { COLOR_UTILS_SNIPPET } from "../src/renderer/color-utils.mjs";
+import { NAV_BUTTONS_SNIPPET } from "../src/renderer/nav-buttons.mjs";
 
 // 皮肤菜单脚本是字符串模板：无法直接在 Node 里跑 DOM，
 // 采用「语法编译 + 关键结构片段断言」，与 injector.test.mjs 的表达式断言风格一致
@@ -17,8 +19,7 @@ const build = (overrides = {}) =>
 test("buildSkinMenuScript：生成的注入脚本可被 JS 引擎编译", () => {
   assert.doesNotThrow(() => new Function(build()));
   // activeId 指向自定义皮肤（注入后由 activateSavedSkin 激活）时同样可编译
-  assert.doesNotThrow(() => new Function(build({ activeId: null })));
-});
+  assert.doesNotThrow(() => new Function(build({ activeId: null })));});
 
 test("切换路径：setTheme/applyCustomTheme/clearTheme 均有异常兜底与错误日志", () => {
   const script = build();
@@ -123,14 +124,68 @@ test("定位按钮：四个按钮齐全，容器/锚点启发式探测与兜底�
   assert.ok(script.includes("box.scrollHeight - box.clientHeight"));
 });
 
+// ---- 注入体片段拼接：顺序即语义 ----
+// 注入体是单一词法作用域里的一个 IIFE，166 个顶层声明共享它。拆成片段后，
+// 拼接顺序就是执行顺序——重排一个片段就可能让某处引用踩 TDZ 并在运行时崩溃。
+// 本组用例把「片段必须原样进入产物」与「片段之间及与关键锚点的相对顺序」钉死。
+test("注入体片段：color-utils 与 nav-buttons 原样进入产物，无转义走形", () => {
+  const script = build();
+  assert.ok(script.includes(COLOR_UTILS_SNIPPET.trim()), "取色片段应逐字出现在注入体里");
+  assert.ok(script.includes(NAV_BUTTONS_SNIPPET.trim()), "定位按钮片段应逐字出现在注入体里");
+  // 片段用 String.raw 保存：反斜杠必须原样保留。
+  // skin-menu 里多处注释记录过「模板字面量吃反斜杠导致正则失效」，这里按内容复核
+  for (const snippet of [COLOR_UTILS_SNIPPET, NAV_BUTTONS_SNIPPET]) {
+    const backslashes = (snippet.match(/\\/g) ?? []).length;
+    if (backslashes === 0) continue;
+    const inScript = script.slice(script.indexOf(snippet.trim()), script.indexOf(snippet.trim()) + snippet.length);
+    assert.equal((inScript.match(/\\/g) ?? []).length, backslashes, "片段里的反斜杠数量应与源一致");
+  }
+});
+
+test("注入体片段：拼接顺序满足前向引用约束（重排即运行时崩溃）", () => {
+  const script = build();
+  const at = (needle, label) => {
+    const index = script.indexOf(needle);
+    assert.ok(index >= 0, `未找到锚点：${label}`);
+    return index;
+  };
+  const colorUtils = at(COLOR_UTILS_SNIPPET.trim(), "color-utils 片段");
+  const navButtons = at(NAV_BUTTONS_SNIPPET.trim(), "nav-buttons 片段");
+  const effectiveColors = at("const effectiveColors", "effectiveColors（buildSurfaces 的同步使用者）");
+  const teardown = at('window["__workbuddySkinTeardown"] = () =>', "teardown 注册");
+
+  // 取色片段必须早于 effectiveColors：后者在同步路径上调 buildSurfaces，
+  // 不像 observer 回调那样有异步窗口兜底
+  assert.ok(colorUtils < effectiveColors, "取色片段必须排在 effectiveColors 之前");
+  // nav 片段必须早于 teardown：teardown 同步引用 navRoot / cancelNavAnim
+  assert.ok(navButtons < teardown, "nav 片段必须排在 teardown 注册之前");
+  // 两个片段互不交叠
+  assert.ok(
+    colorUtils + COLOR_UTILS_SNIPPET.trim().length < navButtons,
+    "取色片段应完整位于 nav 片段之前，不得交叠",
+  );
+});
+
+test("注入体片段：每个片段单独看都不是完整语句块（必须依赖共享作用域）", () => {
+  // 这条用例的意义是记录约束而非挑错：片段不能当独立模块用，
+  // 它们引用共享作用域里的 logError / document 等符号，只有拼进注入体才成立。
+  // 若将来有人把片段改成自包含 IIFE，本断言会失败，提醒同步更新拼接假设。
+  assert.ok(NAV_BUTTONS_SNIPPET.includes("logError"), "nav 片段依赖共享作用域的 logError");
+  assert.ok(!NAV_BUTTONS_SNIPPET.includes("export "), "片段是注入体文本，不应含 ESM 语法");
+  assert.ok(!COLOR_UTILS_SNIPPET.includes("export "), "片段是注入体文本，不应含 ESM 语法");
+});
+
 test("定位按钮：用户滚轮/触摸介入取消动画，显隐按 rAF 合帧、不可滚即隐藏", () => {
   const script = build();
   assert.ok(script.includes('addEventListener("wheel", cancelNavAnim, true)'));
   assert.ok(script.includes('addEventListener("touchstart", cancelNavAnim, true)'));
   assert.ok(script.includes('addEventListener("scroll", scheduleNavUpdate, true)'));
   assert.ok(script.includes('navRoot.style.display = show ? "flex" : "none"'));
-  // 显隐更新挂既有 layoutObserver，不另开 subtree observer
-  assert.ok(script.includes("scheduleReposition(); scheduleNavUpdate();"));
+  // 显隐更新挂既有 layoutObserver，不另开 subtree observer——
+  // 断言「全脚本只有一个 body 全子树观察者」，比匹配回调字面量更稳
+  const bodySubtreeObservers = script.match(/observe\(document\.body,\s*\{[^}]*subtree:\s*true/g) ?? [];
+  assert.equal(bodySubtreeObservers.length, 1, `body 全子树观察者应只有 1 个，实际 ${bodySubtreeObservers.length}`);
+  assert.ok(script.includes("scheduleNavUpdate();"), "导航显隐应由该观察者回调驱动");
 });
 
 test("定位按钮：位置锚定对话框上方右侧，resize 触发重算并在 teardown 拆除", () => {
@@ -178,12 +233,33 @@ test("定位按钮：teardown 拆除动画/监听/节点，自愈重挂覆盖 na
   assert.ok(script.includes("if (!navRoot.isConnected) document.body.appendChild(navRoot);"));
 });
 
-test("reposition：MutationObserver 按 rAF 合帧，不再每次变更都同步读布局", () => {
+test("reposition：MutationObserver 按 rAF 合帧，且先过滤掉纯文本变更", () => {
   const script = build();
   // reposition 与定位按钮显隐共用一个 subtree observer，各自内部按 rAF 合帧
-  assert.ok(script.includes("new MutationObserver(() => { scheduleReposition(); scheduleNavUpdate(); })"));
   assert.ok(script.includes("requestAnimationFrame(() => { repositionQueued = false; reposition(); detectPage(); reviveVideoLayer(); })"));
   assert.ok(!script.includes("queueMicrotask"));
+  // 前置过滤：观察面是 body 全子树 childList，流式输出时每个 token 以文本节点插入触发。
+  // 文本插入不可能改变布局锚点，不过滤则约 99% 的回调是空转（还各拉一帧 DOM 查询）
+  assert.ok(script.includes("hasElementChange"), "应有元素节点变更的前置过滤");
+  assert.ok(script.includes("node.nodeType === 1"), "过滤应按 nodeType 判元素节点");
+  assert.ok(
+    /new MutationObserver\(\(records\) => \{\s*if \(!hasElementChange\(records\)\) return;/.test(script),
+    "layoutObserver 回调须在调度前先过滤",
+  );
+});
+
+test("detectPage：会话宿主命中后走 O(1) 复验快路径，不每帧重跑选择器 + 布局读", () => {
+  const script = build();
+  assert.doesNotThrow(() => new Function(script));
+  // 旧实现每次调用都跑 1+4 次选择器查询并对每个命中元素调 getBoundingClientRect
+  // （强制同步布局），而本函数随 layoutObserver 每帧执行。宿主只在路由切换时变。
+  assert.ok(script.includes("chatHost"), "应缓存上次命中的会话宿主");
+  assert.ok(
+    script.includes("chatHost && chatHost.isConnected && hostQualifies(chatHost)"),
+    "快路径须复验 isConnected 与尺寸，命中则直接续用",
+  );
+  // 主页出现时必须清掉缓存，否则 chat→home 切换会被快路径吃掉
+  assert.ok(/page = "home";\s*chatHost = null;/.test(script), "判定为主页时须清空宿主缓存");
 });
 
 test("页面标记：detectPage 按 wb-home-page/会话宿主写 body[data-wb-skin-page]，teardown 移除", () => {
@@ -198,11 +274,29 @@ test("页面标记：detectPage 按 wb-home-page/会话宿主写 body[data-wb-sk
   // 挂进 layoutObserver 的 rAF 合帧（见上条测试），SPA 路由切换后随 DOM 变更自动重判
 });
 
-test("视频层降噪：VIDEO_LAYER_CSS 含 chat 页 35% 不透明度规则，wrapper 带稳定 class 与过渡", () => {
+test("视频层降噪：VIDEO_LAYER_CSS 含 chat 页 35% 不透明度规则，wrapper 带稳定 class", () => {
   const script = build();
   assert.ok(script.includes('body[data-wb-skin-page=\\"chat\\"] .wb-skin-video-layer { opacity: .35 !important; }'));
   assert.ok(script.includes('wrapper.className = "wb-skin-video-layer"'));
-  assert.ok(script.includes("transition:opacity .4s ease"));
+});
+
+test("视频层：淡变过渡临时挂载而非常驻，时长与摘除延时同源", () => {
+  const script = build();
+  assert.doesNotThrow(() => new Function(script));
+  // 常驻 transition 会被路由切换反复触发：VIDEO_LAYER_CSS 的 chat 页 opacity:.35
+  // 在 data-wb-skin-page 每次翻转时就触发一次全视口 opacity 动画，而该层内含播放中的
+  // <video>——等于每帧重新合成整个视口大小的视频纹理
+  const cssTextLine = script.match(/wrapper\.style\.cssText = "[^"]*"/)?.[0] ?? "";
+  assert.ok(cssTextLine.includes("position:fixed;inset:0"), "应取到 wrapper 的 cssText 赋值");
+  assert.ok(!cssTextLine.includes("transition"), `transition 不应常驻在 cssText 里：${cssTextLine}`);
+  // 改为临时挂载：withFade 加过渡 → 变更 → 定时撤掉
+  assert.ok(script.includes("const withFade = (layer, mutate)"), "应有 withFade 辅助");
+  assert.ok(script.includes('layer.style.removeProperty("transition")'), "淡变结束须撤掉过渡");
+  assert.ok(script.includes('layer.style.removeProperty("will-change")'), "淡变结束须撤掉图层提升");
+  // 时长单一来源：旧实现 wrapper 内联 .4s 而摘除写死 460，是跨 55 行的隐式契约
+  assert.ok(script.includes("const VIDEO_FADE_MS = 400"), "淡变时长应常量化");
+  assert.ok(!/setTimeout\(\(\) => layer\.remove\(\), 460\)/.test(script), "摘除延时不应再写死 460");
+  assert.ok(script.includes("VIDEO_FADE_MS + 60"), "摘除延时应由 VIDEO_FADE_MS 派生");
 });
 
 test("视频重影防护：chat 页且视频已挂载时撤掉 #root 海报帧，视频缺失回退海报兜底", () => {

@@ -16,20 +16,16 @@ import {
   MAX_THEME_VIDEO_BYTES,
   THEME_SCHEMA_VERSION,
 } from "./constants.mjs";
+import { COLOR_KEYS as SHARED_COLOR_KEYS, DEFAULT_COLORS, HEX6 } from "./color.mjs";
 
-const COLOR_KEYS = ["accent", "secondary", "surface", "text"];
+const COLOR_KEYS = SHARED_COLOR_KEYS;
 const COPY_KEYS = ["brand", "headline", "tagline"];
 const VIDEO_EXTENSIONS = new Set([".mp4"]);
 const HERO_EXTENSIONS = new Set([...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS]);
-const HEX_COLOR = /^#[0-9A-F]{6}$/i;
+// hex 校验与缺省四色统一自 color.mjs：这两样曾在 schema / skin-css / theme-store
+// 三处各写一份且值不一致，见该模块头部注释
+const HEX_COLOR = HEX6;
 const THEME_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const DEFAULT_COLORS = {
-  accent: "#4BC2E0",
-  secondary: "#AD7ED5",
-  surface: "#FAFAFF",
-  text: "#122C60",
-};
-
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -267,14 +263,22 @@ async function resolveMediaFile(
   return { path: filePath, size: info.size };
 }
 
-export async function loadTheme(themeDir) {
+// rawManifest 可选：listThemes 已经把每个 theme.json 读出并解析过一遍，
+// apply 路径紧接着对每个主题调本函数又读一遍、解析一遍——65 个主题就是 130 次
+// readFile + 130 次 JSON.parse，其中一半纯属重复。调用方把已解析的对象透传进来即可省掉。
+// 不传则保持原行为（自己读盘），既有调用方与测试无需改动。
+export async function loadTheme(themeDir, rawManifest) {
   const root = resolve(themeDir);
   const manifestPath = join(root, "theme.json");
   let raw;
-  try {
-    raw = JSON.parse(await readFile(manifestPath, "utf8"));
-  } catch (error) {
-    throw new Error(`invalid theme manifest ${manifestPath}: ${error.message}`, { cause: error });
+  if (rawManifest !== undefined) {
+    raw = rawManifest;
+  } else {
+    try {
+      raw = JSON.parse(await readFile(manifestPath, "utf8"));
+    } catch (error) {
+      throw new Error(`invalid theme manifest ${manifestPath}: ${error.message}`, { cause: error });
+    }
   }
   const manifest = validateThemeManifest(raw);
 

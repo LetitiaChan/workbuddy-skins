@@ -30,6 +30,21 @@ export const VIDEO_DB_STORE = "videos";
 // WorkBuddy renderer target 的 URL 特征：app.asar/renderer/index.html
 export const RENDERER_URL_HINT = "renderer/index.html";
 
+// 注入到渲染进程的两个节点 id：皮肤 <style> 与菜单根节点。
+// 放在 constants 而非 injector：compat-probe 的探测表达式要按 id 临时禁用皮肤
+// <style>（否则注入的 --cb-* 覆盖会伪装成原生支持），skinStatus 也要按 id 判在位。
+// 两处都不该为了一个字符串去反向依赖注入编排层。
+export const STYLE_ID = "workbuddy-skin-style";
+export const MENU_ID = "workbuddy-skin-menu";
+
+// 菜单注入体的 Runtime.evaluate 超时预算。注入体把全部主题的 hero/thumbnail/mascot
+// 以 data URL 内联，实测 65 个主题 ≈ 6MB 素材 → base64 后约 8MB 表达式；渲染进程要在
+// 主线程同步完成解析与编译。CDP 默认命令超时 5s（cdp-client DEFAULT_COMMAND_TIMEOUT_MS）
+// 对这个量级不够，慢机必超时；且超时只 reject Promise、不会中断已在 renderer 里执行的
+// 脚本（见 cdp-client 的 send），表现为「报超时但皮肤其实生效了」。
+// 注入是主流程（失败即整体抛错），单独给足预算而不是抬高全局默认值。
+export const MENU_INJECT_TIMEOUT_MS = 30_000;
+
 export function resolveStudioPaths({ home = homedir() } = {}) {
   const isWin = process.platform === "win32";
   const installRoot = join(home, ".workbuddy", PRODUCT_ID);
