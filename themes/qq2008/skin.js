@@ -90,17 +90,30 @@ return (() => {
     knockWaiting = waiting;
   };
 
-  // 状态变化来自 class/文本变更：attributes(class) + characterData 足够覆盖；
-  // rAF 防抖合帧，避免流式渲染期间每帧重复全量扫描
-  let scheduled = false;
-  const observer = new MutationObserver(() => {
-    if (scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      scan();
-    });
-  });
+  // 状态变化来自 class/文本变更：attributes(class) + characterData 足够覆盖。
+  //
+  // 节流为「时间 + 尾沿」而非单纯 rAF：观察面是 body 全子树的
+  // childList + characterData + attributes(class)，流式输出时每个 token 都会触发回调，
+  // rAF 合帧的上限仍是 60 次/秒——而每次 scan 要跑一次
+  // querySelectorAll(".conversation-agent-card")，再对每张卡调最多 6 次 querySelector
+  // 加正则匹配，等于每秒 60 次全量卡片扫描。
+  // 本功能只是「状态跃迁时播一声提示音」，350ms 的延迟完全无感，没有理由按帧扫。
+  // 尾沿必须保留：节流窗口内到达的变更不能丢，否则会漏掉一次跃迁而不响。
+  const SCAN_INTERVAL_MS = 350;
+  let lastScanAt = 0;
+  let trailingTimer = null;
+  const runScan = () => {
+    trailingTimer = null;
+    lastScanAt = Date.now();
+    scan();
+  };
+  const scheduleScan = () => {
+    if (trailingTimer !== null) return; // 已有待执行的扫描，本次变更会被它一并覆盖
+    const waited = Date.now() - lastScanAt;
+    // 距上次扫描已超过一个窗口：立即扫（下一个宏任务），保证孤立变更的响应性
+    trailingTimer = setTimeout(runScan, waited >= SCAN_INTERVAL_MS ? 0 : SCAN_INTERVAL_MS - waited);
+  };
+  const observer = new MutationObserver(scheduleScan);
   observer.observe(document.body, {
     childList: true,
     subtree: true,
@@ -108,10 +121,11 @@ return (() => {
     attributes: true,
     attributeFilter: ["class"],
   });
-  scan();
+  runScan();
 
   return () => {
     observer.disconnect();
+    if (trailingTimer !== null) clearTimeout(trailingTimer);
     for (const audio of [messageSound, failureSound, knockSound]) audio.pause();
   };
 })();
