@@ -46,6 +46,16 @@ test("asCssUrl：大图解码优先 Uint8Array.fromBase64 快路径，避免逐�
   assert.ok(script.includes("atob(b64)")); // 旧内核回退仍保留
 });
 
+test("setTheme：内置大 hero 同走 blob 规避，防止 Blink 静默丢弃超长 data URL 背景", () => {
+  const script = build();
+  // 内置主题的 css 改为懒求值函数：先经 heroOf 提 hero、asCssUrl 转 blob，再回填 CSS
+  assert.ok(script.includes("const heroUrl = heroOf(theme.css);"));
+  assert.ok(script.includes('if (heroUrl && heroUrl.startsWith("data:"))'));
+  assert.ok(script.includes("theme.css.split(heroUrl).join(blobUrl)"));
+  // 不再直接内联 data URL（原 css: theme.css 直给，高清大图会被 Blink 丢背景）
+  assert.ok(!script.includes("css: theme.css"));
+});
+
 test("videoStore：onblocked 告警 + onabort reject，IndexedDB 阻塞/中止不再静默挂起", () => {
   const script = build();
   assert.ok(script.includes("req.onblocked"));

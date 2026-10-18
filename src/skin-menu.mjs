@@ -673,7 +673,18 @@ export function buildSkinMenuScript({ entries, activeId, styleId, menuId, cssTem
     }
     try {
       applySkinSwap({
-        css: theme.css,
+        // 内置大 hero 与自定义皮肤同一条 blob 规避路径：Blink 会静默丢弃超长 data URL 的
+        // background 声明（实测 ~4MB 必现、背景整体消失）。此前内置主题直接内联 data URL 未走
+        // asCssUrl，高清大图（>192KB）切到即丢背景。css 传函数：asCssUrl 内部会 releaseHeroBlob，
+        // 须在 swap 的 beginHeroFade（取旧 hero）与 onBefore（清旧 blob）之后求值，故懒求值。
+        css: () => {
+          const heroUrl = heroOf(theme.css);
+          if (heroUrl && heroUrl.startsWith("data:")) {
+            const blobUrl = asCssUrl(heroUrl);
+            if (blobUrl !== heroUrl) return theme.css.split(heroUrl).join(blobUrl);
+          }
+          return theme.css;
+        },
         surface: theme.surface,
         // dynamicMode 主题（如按时间变色的 sky-clock）跳过钉住——pinnedDark 保持 null，
         // modeObserver 空转，明暗写入权完整交给主题 js；切回其他主题时恢复钉住
