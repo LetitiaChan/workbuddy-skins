@@ -1,7 +1,10 @@
 /* Sky Clock · 四时天空 —— 主题伴随脚本（new Function 函数体，返回拆除回调）。
    职责：按真实时间插值「天空时刻表」，每 30s（墙钟半分钟对齐）重建一次场景 SVG，
    预解码后单帧换图写入 body::before，同步改写 skin.css 引用的 --sky-* 变量
-   与界面明暗模式（明暗翻转走 0.20–0.40 亮度过渡带 + 迟滞，带内颜色连续插值）。
+   与界面明暗模式（明暗翻转走 0.20–0.40 亮度过渡带 + 迟滞，在带中央一次切换）。
+   带内只有主题自有的半透明浮层色（--sky-panel/border/shadow/art-opacity）连续插值；
+   原生实底表面令牌一律「档内着色」，不做跨档插值——跨档插值会放大令牌间的明度
+   阶梯差并落在中间调，表现为满屏轴对齐的矩形色块（详见 applySurfaces 前注释）。
    刷新为「零动画、差量写入」：每 30s 天色变化 ≤1/255，不做任何 CSS 过渡；值未变的
    变量/令牌/属性一律不写，避免无谓的全树样式重算与整屏重绘（见 tick 前注释）。
    明暗模式由本脚本接管（theme.json 声明 dynamicMode，菜单跳过钉住）；
@@ -403,7 +406,12 @@ const NEUTRAL_MAX_LEVEL = 80;    // 最亮分量 ≤ 80 才算深色表面（排
 // 只取天色色相的小部分并限幅，底色呈带一丝蓝调的黑灰而非饱和海军蓝
 const TINT_STRENGTH = 0.3;
 const TINT_CAP = 5;              // 色相偏移单分量上限
-const TOKEN_EXCLUDE = /^--sky-|text|fg|foreground|icon|shadow|mask|overlay/i;
+// 排除非「实底表面」语义的令牌。前半段是前景/浮层（文字、图标、阴影、蒙版）；
+// 后半段是描边类（描边不是表面，被当表面着色会把分隔线/输入框边框一起染成天色，
+// 实测 19 个描边令牌被误伤：--cb-*-border / --sc-divider-* / --cb-markdown-hr-border-color
+// / --cb-toggle-track-off-bg 等，表现为描边糊掉、分隔线忽明忽暗）
+const TOKEN_EXCLUDE =
+  /^--sky-|text|fg|foreground|icon|shadow|mask|overlay|border|divider|separator|outline|stroke|ring|underline|caret|track|thumb|scrollbar/i;
 const chromaOf = (rgb) => {
   const m = (rgb[0] + rgb[1] + rgb[2]) / 3;
   return rgb.map((v) => v - m);
@@ -458,13 +466,17 @@ const scanTokenNames = () => {
 };
 // 原生表面值缓存（按明暗分档）：读取前先撤掉本脚本写的内联值，读到的就是原生计算值
 // （skin.css 的静态兜底挂在 :not([data-sky-js]) 下，js 运行时不参与）。撤与写在同一任务内
-// 完成，不会出帧。浅色档存全部令牌，供过渡带内从浅色原生值渐变；持久化到 localStorage，
-// 跨会话首个过渡带即可平滑
+// 完成，不会出帧。两档都只收「该档的中性表面」，跨档插值已废弃（见 applySurfaces），
+// 缓存无需保存彩色令牌；持久化到 localStorage，跨会话首次 tick 即可直接命中
 const CACHE_KEY = "workbuddy-sky-clock:native-surfaces";
+// 缓存结构变更（v1 的 light 档存了全部不透明令牌）必须换 key，否则旧缓存会被当新结构用
+const CACHE_VER = "v2";
 let nativeCache = { dark: null, light: null };
 try {
   const saved = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
-  if (saved && typeof saved === "object") nativeCache = { dark: saved.dark || null, light: saved.light || null };
+  if (saved && typeof saved === "object" && saved.ver === CACHE_VER) {
+    nativeCache = { dark: saved.dark || null, light: saved.light || null };
+  }
 } catch { /* 无 localStorage（测试桩/受限环境） */ }
 let cacheFresh = { dark: false, light: false };
 // 令牌差量写入：body 上每个 setProperty 都让继承该变量的整棵子树失效、触发全页重绘。
@@ -500,53 +512,52 @@ const readNative = (dark) => {
   const out = {};
   for (const n of tokenNames) {
     const rgb = parseOpaque(cs.getPropertyValue(n));
-    if (rgb && (!dark || isDarkNeutral(rgb))) out[n] = rgb;
+    // 两档各按本档的中性表面判定收集：深色档要「暗中性」，浅色档要「亮中性」。
+    // 浅色档原先不过滤（彩色 accent 也进缓存），只为跨档插值取用——该路径已废弃
+    if (rgb && (dark ? isDarkNeutral(rgb) : isLightNeutral(rgb))) out[n] = rgb;
   }
   nativeCache[mode] = out;
   cacheFresh = rescanned ? { dark: false, light: false, [mode]: true } : { ...cacheFresh, [mode]: true };
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify(nativeCache)); } catch { /* 忽略 */ }
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ver: CACHE_VER, ...nativeCache })); } catch { /* 忽略 */ }
 };
-// 按当前明暗与过渡带进度写入全部中性表面令牌（内联 !important 压过原生规则）。
-// hue 为浅色着色/过渡带去灰共用的天色色相向量（见 tick）。
-// 先算出目标表再交给 reconcile 差量落盘，避免「清空→整表重写」的无谓重绘
-const applySurfaces = (dark, flipT, tint, hue) => {
+// 按当前明暗档写入全部中性表面令牌（内联 !important 压过原生规则）。
+// tint / hue 分别是深色档与浅色档的天色色相向量（见 tick）。
+// 先算出目标表再交给 reconcile 差量落盘，避免「清空→整表重写」的无谓重绘。
+//
+// ★ 这里曾经做「跨档插值」：过渡带内（flipT ∈ (0,1)）把每个令牌从浅色原生值 lerp
+//   到深色值。该做法必然产出可见色块，已废弃——原因有三，均为实测：
+//   1) 各令牌的浅↔深跨度互不相同（#fff→#1f1f1f 与 #f3f3f3→#252525 跨度差 10+），
+//      lerp 到中段时「原本只差 1–2/255、人眼不可辨」的表面阶梯被放大到 6–18/255，
+//      而且正好落在亮度最敏感的中间调区间；层层嵌套的容器（.teams-container /
+//      .conversation-shell / .conversation-list / 侧栏条目）于是显形为一组
+//      轴对齐的矩形色块——实测 flipT=0.72 时有 22 个元素画出 rgb(142,130,136)
+//      到 rgb(160,146,154) 的不同中间调。
+//   2) 中间调实底是近中性灰，与天空渐变的粉紫/蓝色族脱节，色块看起来「脏」。
+//   3) 迟滞翻转（见 tick）让界面在带内仍处于上一档，深色档配中间调表面 =
+//      白字压在中灰上，对比度同时受损。
+//   现在改为「档内着色、翻转点硬切」：带内表面保持当前档的原生阶梯不动（只随天色
+//   微调色相，幅度 ≤5/≤9 且取整），明暗切换由 writeMode 的迟滞在带中央一次完成。
+//   为何不「保留渐暗但避免阶梯放大」（例如对浅色阶梯做统一亮度缩放）：表面能平滑
+//   压暗，但文字令牌按设计不在改写范围内（TOKEN_EXCLUDE 排除 text/fg），
+//   浅色模式的深色文字压在半暗表面上对比度会崩——可读性优先于渐变。
+const applySurfaces = (dark, tint, hue) => {
   readNative(dark);
-  const darkNative = nativeCache.dark, lightNative = nativeCache.light;
+  const native = dark ? nativeCache.dark : nativeCache.light;
   const next = new Map();
-  // 纯浅色时段（flipT=0）：给浅色中性表面加天色色相偏移——界面从「无彩灰」变为
-  // 「带天色倾向的浅灰」，与天空/山脊同族；明度阶梯与透明度不动
-  if (!dark && flipT <= 0) {
-    if (lightNative) {
-      for (const n in lightNative) {
-        const rgb = lightNative[n];
-        if (!isLightNeutral(rgb)) continue;
-        next.set(n, rgb2hex(rgb.map((v, i) => v + hue[i])));
-      }
-    }
-    reconcile(next);
-    return;
-  }
-  if (!darkNative || flipT <= 0) { reconcile(next); return; }
-  // 过渡带变暗改平方缓动：带前段保持浅色，暗化压缩到类名翻转之前，漫长的
-  // 「半暗死灰」中段大幅缩短；带内再叠天色色相（峰值在带中央 hueAmt=1），
-  // 线性插值的中点本是不饱和死灰，带色相的灰才不脏
-  const ease = flipT * flipT;
-  const hueAmt = 4 * flipT * (1 - flipT);
-  for (const n in darkNative) {
-    const tinted = darkNative[n].map((v, i) => v + tint[i]);
-    // 过渡带内从浅色原生值渐变（无浅色档时深色侧直接到位；浅色模式下无浅色值则不动）
-    const light = lightNative && lightNative[n];
-    if (!light && !dark) continue;
-    const rgb = light && ease < 1
-      ? light.map((v, i) => lerp(v, tinted[i], ease) + hue[i] * hueAmt)
-      : tinted;
-    next.set(n, rgb2hex(rgb));
+  if (native) {
+    // 色相偏移零均值（只加色相不改明度）：原生明度阶梯原样保留，所有视图同一色调
+    const shift = dark ? tint : hue;
+    for (const n in native) next.set(n, rgb2hex(native[n].map((v, i) => v + shift[i])));
   }
   reconcile(next);
 };
 // 明暗翻转窗口：天空中带亮度 L ∈ [0.20, 0.40] 为过渡带，flipT 0=纯亮 1=纯暗。
-// 带内所有主题自有颜色连续插值；类名翻转带迟滞（flipT≥0.98 转暗、≤0.02 转亮），
-// 发生在带缘、表面色已就位之后，消除「到点整屏瞬切」
+// 带内主题自有的半透明浮层色连续插值；原生实底表面在翻转点一次切换（见 applySurfaces）。
+// 翻转点取带中央（flipT≥0.65 转暗、≤0.35 转亮）：带内不再做渐暗，若仍把翻转压到
+// 带缘（旧值 0.98/0.02），黄昏会出现「全白界面 + 近夜空」持续约两小时。
+// 0.30 的迟滞间隔远大于天色在带内的单步变化（30s 内 ΔflipT < 0.01），不会抖动。
+// 注意：flipT 只驱动主题自有颜色，不再参与原生表面令牌的取值
+const FLIP_TO_DARK = 0.65, FLIP_TO_LIGHT = 0.35;
 const FLIP_HI = 0.40, FLIP_LO = 0.20;
 const flipTof = (lum) => Math.min(1, Math.max(0, (FLIP_HI - lum) / (FLIP_HI - FLIP_LO)));
 
@@ -592,7 +603,9 @@ const tick = () => {
   const lum = luminance(sky.mid);
   const flipT = flipTof(lum);
   // 迟滞翻转：过渡带内维持现状，避免阈值附近来回抖动
-  const dark = currentDark === null ? flipT >= 0.5 : (currentDark ? flipT > 0.02 : flipT >= 0.98);
+  const dark = currentDark === null
+    ? flipT >= 0.5
+    : (currentDark ? flipT > FLIP_TO_LIGHT : flipT >= FLIP_TO_DARK);
   // 场景几何时间对齐到 GEOM_STEP 栅格，配色走 COLOR_STEP 栅格（见上方量化说明）
   swapArt(buildSvg(quantHour(h), quantScene(sky), phase));
   setVar("--sky-top", sky.top);
@@ -630,14 +643,16 @@ const tick = () => {
   const track = Math.min(1, Math.max(0, (0.15 - lum) / 0.10));
   const raw = STATIC_TINT.map((v, i) => lerp(v, chromaOf(hex2rgb(sky.mid))[i], track) * TINT_STRENGTH);
   const peak = Math.max(...raw.map(Math.abs));
-  const tint = peak > TINT_CAP ? raw.map((v) => (v * TINT_CAP) / peak) : raw;
-  // 浅色着色/过渡带去灰共用的天色色相向量：直接取当前天空中带色（黄昏粉紫、正午天蓝），
+  // 取整：偏移最终要落进 rgb2hex（整数通道），不取整则每 tick 的小数抖动都算「值变了」，
+  // 触发 500+ 令牌的无谓重写——取整后绝大多数 tick 落在同一整数格，差量写入为零
+  const tint = (peak > TINT_CAP ? raw.map((v) => (v * TINT_CAP) / peak) : raw).map(Math.round);
+  // 浅色着色的天色色相向量：直接取当前天空中带色（黄昏粉紫、正午天蓝），
   // 与深色 tint 的「午夜海军蓝兜底」不同——浅色表面就活在当前天色下
   const hueRaw = chromaOf(hex2rgb(sky.mid)).map((v) => v * TINT_STRENGTH_LIGHT);
   const huePeak = Math.max(...hueRaw.map(Math.abs));
-  const hue = huePeak > TINT_CAP_LIGHT ? hueRaw.map((v) => (v * TINT_CAP_LIGHT) / huePeak) : hueRaw;
-  lastSurface = [dark, flipT, tint, hue];
-  applySurfaces(dark, flipT, tint, hue);
+  const hue = (huePeak > TINT_CAP_LIGHT ? hueRaw.map((v) => (v * TINT_CAP_LIGHT) / huePeak) : hueRaw).map(Math.round);
+  lastSurface = [dark, tint, hue];
+  applySurfaces(dark, tint, hue);
 };
 let lastSurface = null;
 

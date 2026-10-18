@@ -185,6 +185,124 @@ test("sky-clock skin.js：浅色时段浅色中性表面加天色色相偏移，
   }
 });
 
+// 回归：明暗过渡带内不得把实底表面令牌插值成「中间调」。
+// 旧实现在带内把每个令牌从浅色原生值 lerp 到深色值，而各令牌的浅↔深跨度互不相同，
+// 中段会把「原生只差 1–2/255、不可辨」的表面阶梯放大到 6–18/255，且正好落在亮度
+// 最敏感的中间调区间——嵌套容器于是显形为一组轴对齐矩形色块（实机 flipT=0.72 时
+// 实测 22 个元素画出 rgb(142,130,136)…rgb(160,146,154) 的不同中间调）。
+// 现在带内「档内着色」：取值只来自当前档的原生阶梯 + 取整后的色相偏移。
+const bandCases = [
+  {
+    label: "黄昏带内（flipT≈0.70，深色档）",
+    at: [2026, 9, 15, 17, 20, 0],
+    dark: true,
+    native: { "--wb-home-bg-secondary": "#141414", "--wb-bg-primary": "#1f1f1f" },
+    // 种子：持久化的浅色档原生值。旧实现正是靠它做跨档 lerp——没有它，跨档路径会
+    // 退化成纯深色、复现不出缺陷。有了种子，旧实现在此刻写出 #8a8a93 一类中间调
+    seedLight: { "--wb-home-bg-secondary": [250, 250, 250], "--wb-bg-primary": [255, 255, 255] },
+    // 深色档上限：isDarkNeutral 的 NEUTRAL_MAX_LEVEL(80) + TINT_CAP(5)
+    bound: (rgb) => Math.max(...rgb) <= 85,
+    boundText: "最亮分量应 ≤85（深色阶梯内）",
+  },
+  {
+    label: "黄昏带内（flipT≈0.33，浅色档）",
+    at: [2026, 9, 15, 16, 30, 0],
+    dark: false,
+    native: { "--wb-home-bg-secondary": "#fafafa", "--wb-bg-primary": "#ffffff" },
+    // 浅色档下限：NEUTRAL_MIN_LEVEL_LIGHT(176) − TINT_CAP_LIGHT(9)
+    bound: (rgb) => Math.min(...rgb) >= 167,
+    boundText: "最暗分量应 ≥167（浅色阶梯内）",
+  },
+];
+
+for (const c of bandCases) {
+  test(`sky-clock skin.js：${c.label}表面令牌留在本档阶梯内，不出现中间调色块`, () => {
+    const dom = installDomStubs();
+    const RealDate = globalThis.Date;
+    const when = new RealDate(...c.at).getTime();
+    globalThis.Date = class extends RealDate {
+      constructor(...a) { super(...(a.length ? a : [when])); }
+      static now() { return when; }
+    };
+    const names = Object.keys(c.native);
+    globalThis.document.styleSheets = [{ ownerNode: {}, cssRules: [{ style: Object.assign([...names], {}) }] }];
+    globalThis.getComputedStyle = () => ({
+      getPropertyValue: (n) => dom.body.style.props.get(n) ?? c.native[n] ?? "",
+    });
+    const savedStorage = globalThis.localStorage;
+    if (c.seedLight) {
+      const seed = JSON.stringify({ ver: "v2", dark: null, light: c.seedLight });
+      globalThis.localStorage = { getItem: () => seed, setItem() {}, removeItem() {} };
+    }
+    try {
+      const teardown = new Function(skinJs)();
+      const p = dom.body.style.props;
+      assert.equal(dom.body.classList.contains("dark"), c.dark, "档位判定与预期不符，用例时刻需复核");
+      const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+      const canvas = p.get("--wb-home-bg-secondary");
+      const card = p.get("--wb-bg-primary");
+      for (const [n, v] of [["--wb-home-bg-secondary", canvas], ["--wb-bg-primary", card]]) {
+        assert.match(v ?? "", /^#[0-9a-f]{6}$/, `${n} 应写入 6 位 hex`);
+        const value = rgb(v);
+        assert.ok(c.bound(value), `${n}=${v} 落入中间调：${c.boundText}`);
+        // 中间调区间（110–200）是色块最显眼的地带，直接钉死
+        assert.ok(
+          Math.max(...value) < 110 || Math.min(...value) > 200,
+          `${n}=${v} 落在中间调区间 [110,200]，会在天空渐变上形成可见矩形色块`,
+        );
+      }
+      // 阶梯保留：两个令牌的差值必须等于原生差（11/11/11 或 5/5/5），否则嵌套容器会互相显形
+      const nativeDelta = rgb(c.native["--wb-bg-primary"]).map((v, i) => v - rgb(c.native["--wb-home-bg-secondary"])[i]);
+      const written = rgb(card).map((v, i) => v - rgb(canvas)[i]);
+      written.forEach((d, i) => {
+        // 浅色档近白表面会被 255 钳位，只要求不超过原生差（不放大）
+        assert.ok(d <= nativeDelta[i], `通道 ${i} 阶梯被放大：原生差 ${nativeDelta[i]} → 写入差 ${d}`);
+      });
+      teardown();
+    } finally {
+      globalThis.Date = RealDate;
+      delete globalThis.getComputedStyle;
+      if (savedStorage === undefined) delete globalThis.localStorage;
+      else globalThis.localStorage = savedStorage;
+      dom.restore();
+    }
+  });
+}
+
+test("sky-clock skin.js：明暗翻转点在过渡带中央，并带 0.30 迟滞（不随天色抖动）", () => {
+  const dom = installDomStubs();
+  const RealDate = globalThis.Date;
+  let now = new RealDate(2026, 9, 15, 12, 0, 0).getTime(); // 正午：flipT=0，浅色
+  globalThis.Date = class extends RealDate {
+    constructor(...a) { super(...(a.length ? a : [now])); }
+    static now() { return now; }
+  };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: () => "" });
+  const at = (...a) => { now = new RealDate(...a).getTime(); dom.listeners.get("visibilitychange")(); };
+  const isDark = () => dom.body.classList.contains("dark");
+  try {
+    const teardown = new Function(skinJs)();
+    assert.equal(isDark(), false, "正午应为浅色");
+    // 17:00 flipT≈0.58 < FLIP_TO_DARK(0.65)：仍未翻转
+    at(2026, 9, 15, 17, 0, 0);
+    assert.equal(isDark(), false, "flipT≈0.58 未达 0.65，应仍为浅色");
+    // 17:30 flipT≈0.75 ≥ 0.65：翻转为深色
+    at(2026, 9, 15, 17, 30, 0);
+    assert.equal(isDark(), true, "flipT≈0.75 应翻转为深色");
+    // 回落到 17:00（flipT≈0.58 > FLIP_TO_LIGHT(0.35)）：迟滞保持深色，不回弹
+    at(2026, 9, 15, 17, 0, 0);
+    assert.equal(isDark(), true, "迟滞区内不应回弹为浅色");
+    // 16:20 flipT≈0.24 ≤ 0.35：才转回浅色
+    at(2026, 9, 15, 16, 20, 0);
+    assert.equal(isDark(), false, "flipT≈0.24 应转回浅色");
+    teardown();
+  } finally {
+    globalThis.Date = RealDate;
+    delete globalThis.getComputedStyle;
+    dom.restore();
+  }
+});
+
 test("sky-clock skin.js：场景为单图层硬换，不再输出双图层交叉淡化变量", () => {
   const dom = installDomStubs();
   try {

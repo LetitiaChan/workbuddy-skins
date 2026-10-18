@@ -3,7 +3,9 @@
    body 渐变底 + body::before 挂载场景 SVG + 对话框磨砂浮层。
    区别在于全部色彩都走 CSS 变量：skin.js 每 30s 按天空时刻表重建一次场景 SVG
    （太阳/月亮弧线、山脊、星星）写入 body::before，并改写本文件引用的变量；
-   明暗模式翻转走亮度过渡带连续插值，无到点瞬切。变量未写入时（CSP 禁 eval 导致
+   明暗模式翻转在亮度过渡带的中央一次完成（带内原生表面保持本档阶梯不动，只随天色
+   微调色相；跨档插值会放大令牌间明度差并落在中间调，形成满屏矩形色块，已废弃）。
+   变量未写入时（CSP 禁 eval 导致
    js 降级）回退到此处声明的黄昏静态默认值与 sky.svg 兜底图，主题依然可用。
 
    ★ 性能基线：本文件对「全视口元素」零 CSS 过渡/动画。
@@ -94,10 +96,12 @@ body.dark:not([data-sky-js]) {
 }
 
 /* 输入框卡片：原生 --wb-home-composer-*-card-bg 的值不是纯色（color-mix/变量引用），
-   skin.js 的令牌扫描着色覆盖不到——过渡带里周围表面已变暗着色、输入框却保持纯白，
-   刺眼跳出。js 运行时改读 --sky-panel：该变量随 flipT 从「天际色混白」连续过渡到
-   深海军蓝（skin.js 每 30s 重写，@property 颜色过渡平滑化），输入框与全局同节奏，
-   且 0.8 alpha 半透叠在天空渐变上，亮度与场景协调 */
+   skin.js 的令牌扫描着色覆盖不到——周围表面已按档着色、输入框却保持纯白，刺眼跳出。
+   js 运行时改读 --sky-panel：该变量随 flipT 从「天际色混白」连续过渡到深海军蓝
+   （skin.js 每 30s 重写，@property 颜色过渡平滑化），输入框与全局同节奏，
+   且 0.8 alpha 半透叠在天空渐变上，亮度与场景协调。
+   这类半透明浮层只有少数几个元素使用，不存在「嵌套容器阶梯差放大」问题，
+   所以它可以也应该连续插值——与实底令牌的处置不同，原因见 skin.js applySurfaces */
 body[data-sky-js] {
   --wb-home-composer-card-bg: var(--sky-panel) !important;
   --wb-home-composer-sub-card-bg: var(--sky-panel) !important;
