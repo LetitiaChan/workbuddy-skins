@@ -6,7 +6,7 @@
   "js": "skin.js",
   "dynamicMode": true,
   "group": "custom",
-  "order": -8,
+  "order": -7.5,
   "colors": {
     "accent": "#4A90D9",
     "secondary": "#FFB347",
