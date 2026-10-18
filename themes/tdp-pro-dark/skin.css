@@ -709,6 +709,11 @@ body ::selection {
   z-index: -1;
   pointer-events: none;
   transition: opacity .4s ease;
+  /* 常驻提升为独立合成层：本层 64vh×70vh 且 z-index:-1 会被拉进根滚动层的绘制序列，
+     内部又挂着 7 条 infinite 动画——不提升则每帧动画都让下方整页参与重绘。
+     注意不要加 contain: paint：.tdp-vis 是 overflow:visible !important、
+     .tdp-orbit--3 宽 126%，子元素按设计溢出本盒，paint containment 会裁掉轨道环。 */
+  will-change: opacity;
 }
 
 body[data-tdp-page="chat"] #tdp-hero-visual {
@@ -751,6 +756,9 @@ body[data-tdp-page="chat"] #tdp-hero-visual {
   border-radius: 50%;
 
   animation: tdp-hero-float 3.8s ease-in-out infinite;
+  /* 37.5vh 的圆顶叠了 3 层 box-shadow + 2 层 radial-gradient，不提升图层则每帧都要
+     重绘这整套渐变与投影；提升后动画退化为合成器上的纯 transform */
+  will-change: transform;
 
   background:
     radial-gradient(circle at 28% 24%, rgba(255,255,255,.55) 0%, rgba(255,255,255,.14) 32%, transparent 52%),
@@ -782,6 +790,7 @@ body[data-tdp-page="chat"] #tdp-hero-visual {
   height: 80%;
   border-color: color-mix(in srgb, var(--tdp-primary) 35%, transparent);
   animation: tdp-orbit-spin 18s linear infinite;
+  will-change: transform;
 }
 
 #tdp-hero-visual .tdp-orbit--2 {
@@ -789,6 +798,7 @@ body[data-tdp-page="chat"] #tdp-hero-visual {
   height: 104%;
   border-color: color-mix(in srgb, var(--tdp-primary) 18%, transparent);
   animation: tdp-orbit-spin 28s linear infinite reverse;
+  will-change: transform;
 }
 
 #tdp-hero-visual .tdp-orbit--3 {
@@ -828,6 +838,8 @@ body[data-tdp-page="chat"] #tdp-hero-visual {
   background: var(--tdp-violet);
   opacity: .7;
   animation: tdp-float 5s ease-in-out infinite;
+  /* 带 box-shadow 发光的小光点：提升图层让发光只烘一次，动画走合成器 */
+  will-change: transform;
   pointer-events: none;
 }
 
@@ -864,6 +876,7 @@ body[data-tdp-page="chat"] #tdp-hero-visual {
   right: 22%;
   box-shadow: 0 0 10px 2px color-mix(in srgb, var(--tdp-violet) 50%, transparent);
   animation: tdp-float 6s ease-in-out infinite -1s;
+  will-change: transform;
 }
 
 #tdp-hero-visual .tdp-deco--b {
@@ -873,6 +886,7 @@ body[data-tdp-page="chat"] #tdp-hero-visual {
   right: 12%;
   box-shadow: 0 0 8px 2px color-mix(in srgb, var(--tdp-violet) 45%, transparent);
   animation: tdp-float 7s ease-in-out infinite -3s;
+  will-change: transform;
 }
 
 #tdp-hero-visual .tdp-deco--c {
@@ -882,6 +896,7 @@ body[data-tdp-page="chat"] #tdp-hero-visual {
   left: 6%;
   box-shadow: 0 0 12px 3px color-mix(in srgb, var(--tdp-violet) 55%, transparent);
   animation: tdp-float 5.5s ease-in-out infinite -2.5s;
+  will-change: transform;
 }
 
 #tdp-hero-visual .tdp-ring {
@@ -922,6 +937,10 @@ body[data-tdp-page="chat"] #tdp-hero-visual {
     drop-shadow(0 0 36px color-mix(in srgb, var(--tdp-primary) 50%, transparent))
     drop-shadow(0 16px 40px color-mix(in srgb, var(--tdp-primary) 28%, transparent));
   animation: tdp-hero-float 3.8s ease-in-out infinite;
+  /* 全主题最重的一处：animated transform 叠两层 drop-shadow（36px/40px 高斯模糊）。
+     不提升图层时每帧都要重跑整条 filter 管线，而不是只做合成层位移；
+     提升后 filter 只在建层时烘一次进纹理，动画变成对该纹理的 transform。 */
+  will-change: transform;
 }
 
 .claw-agent-chat-pane .colleague-chat-empty-profile__avatar[data-cloud-assistant="true"],
@@ -931,6 +950,7 @@ body[data-tdp-page="chat"] #tdp-hero-visual {
   background: url("./hero-tdp-pro.webp") center / contain no-repeat !important;
   box-shadow: none !important;
   animation: tdp-float 4.2s ease-in-out infinite;
+  will-change: transform;
 }
 
 .claw-agent-chat-pane .colleague-chat-empty-profile__avatar[data-cloud-assistant="true"] > *,
@@ -1271,4 +1291,30 @@ body.dark [class*="input-area-container"] [class*="_container_pf4c4"]::after,
 body.dark .project-detail-view__chat-input [class*="_container_pf4c4"]::after,
 body.dark .atm-modal-chat-input [class*="_container_pf4c4"]::after {
   background-image: url("./tdp-logo-dark.png");
+}
+
+/* 减弱动效降级：本主题有 7 条 infinite 动画（圆顶 / 双轨道 / 5 个发光点 / 头像浮动），
+   原先无任何 prefers-reduced-motion 保护——系统开了减弱动效仍会永久跑。
+   命中时一并撤掉 will-change：动画停了就不需要常驻合成层，留着白占显存。
+   hero 层的 opacity transition 同样关掉（切页时的 .4s 淡变纯属装饰）。 */
+@media (prefers-reduced-motion: reduce) {
+  #tdp-hero-visual {
+    transition: none;
+    will-change: auto;
+  }
+
+  #tdp-hero-visual .tdp-dome,
+  #tdp-hero-visual .tdp-orbit--1,
+  #tdp-hero-visual .tdp-orbit--2,
+  #tdp-hero-visual .tdp-vis::before,
+  #tdp-hero-visual .tdp-vis::after,
+  #tdp-hero-visual .tdp-deco--a,
+  #tdp-hero-visual .tdp-deco--b,
+  #tdp-hero-visual .tdp-deco--c,
+  #tdp-hero-visual .tdp-spaceman__img,
+  .claw-agent-chat-pane .colleague-chat-empty-profile__avatar[data-cloud-assistant="true"],
+  .claw-agent-chat-pane .colleague-chat-empty-profile__avatar.colleague-card-avatar--image[data-cloud-assistant="true"] {
+    animation: none !important;
+    will-change: auto;
+  }
 }

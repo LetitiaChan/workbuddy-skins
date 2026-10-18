@@ -51,7 +51,10 @@ return (() => {
       return;
     }
     const { host, page } = found;
-    document.body.setAttribute("data-tdp-page", page);
+    // 同值 setAttribute 也会走一遍属性变更路径，先比对再写
+    if (document.body.getAttribute("data-tdp-page") !== page) {
+      document.body.setAttribute("data-tdp-page", page);
+    }
     const existing = document.getElementById(HERO_ID);
     if (existing && existing.parentElement === host) return;
     if (existing) removeLayer();
@@ -61,6 +64,21 @@ return (() => {
     layer.innerHTML = HERO_HTML;
     host.classList.add("tdp-hero-host");
     host.insertBefore(layer, host.firstChild);
+  };
+
+  // O(1) 快路径：判断「英雄层仍在正确宿主里」而不触发任何布局读取。
+  // findHost 要跑 1+4 次选择器查询并对每个命中元素调 getBoundingClientRect（强制同步布局），
+  // 而下面的观察者在流式输出期间每帧都会触发——宿主只在 SPA 路由切换时变，不该按帧重算。
+  // 这里只做三件零布局的事：层还在、宿主还连着文档、主页地标与当前宿主是否矛盾。
+  // 主页出现/消失都会让第三项失败，从而回落到完整的 findHost。
+  const stillPlaced = () => {
+    const layer = document.getElementById(HERO_ID);
+    if (!layer) return false;
+    const parent = layer.parentElement;
+    if (!parent || !parent.isConnected) return false;
+    const home = document.querySelector(".wb-home-page");
+    if (home) return home === parent;          // 主页在：宿主必须就是它
+    return !parent.matches(".wb-home-page");   // 主页不在：宿主不该还是主页节点
   };
 
   ensure();
@@ -73,6 +91,7 @@ return (() => {
     scheduled = true;
     requestAnimationFrame(() => {
       scheduled = false;
+      if (stillPlaced()) return; // 绝大多数帧走这里，零布局读取
       ensure();
     });
   });
