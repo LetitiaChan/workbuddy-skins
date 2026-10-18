@@ -2,12 +2,16 @@
    骨架与取色哲学移植自内置 aurora（山野极光，JanCong/workbuddy-skin，MIT）：
    body 渐变底 + body::before 挂载场景 SVG + 对话框磨砂浮层。
    区别在于全部色彩都走 CSS 变量：skin.js 每 30s 按天空时刻表重建一次场景 SVG
-   （太阳/月亮弧线、山脊、星星）经 ::before/::after 双图层交叉淡化切换，并改写本
-   文件引用的变量；明暗模式翻转走亮度过渡带连续插值，无到点瞬切。变量未写入时
-   （CSP 禁 eval 导致 js 降级）回退到此处声明的黄昏静态默认值与 sky.svg 兜底图，
-   主题依然可用。
-   六个颜色变量经 @property 注册（<color> 可插值），分钟级跳变由 body 上的
-   1.5s 过渡平滑化；过渡时长远小于刷新间隔，不会形成常驻逐帧重绘。
+   （太阳/月亮弧线、山脊、星星）写入 body::before，并改写本文件引用的变量；
+   明暗模式翻转走亮度过渡带连续插值，无到点瞬切。变量未写入时（CSP 禁 eval 导致
+   js 降级）回退到此处声明的黄昏静态默认值与 sky.svg 兜底图，主题依然可用。
+
+   ★ 性能基线：本文件对「全视口元素」零 CSS 过渡/动画。
+   曾经的 body 颜色 1.5s transition 与场景双图层 1.2s 交叉淡化，会让每次 30s 刷新
+   演变成 70–90 帧的整屏渐变重绘；全屏渐变与全屏 SVG 的光栅瓦片逐块提交，在屏上
+   就是「颜色渐变抽丝刷屏」。因 30s 相邻帧天色差 ≤1/255、天体位移 ≤1px，过渡本就
+   不必要——改为 skin.js 差量硬写（值未变不碰 DOM），视觉连续且无重绘洪峰。
+   如需再加过渡，只能加在局部元素上，禁止回加到 body / body::before。
    artwork 层 z-index 2147482900，避让本地 🎨 菜单按钮（同层级 2147483000 区间） */
 @property --sky-top { syntax: "<color>"; inherits: true; initial-value: #4b4c92; }
 @property --sky-mid { syntax: "<color>"; inherits: true; initial-value: #c96b80; }
@@ -20,8 +24,6 @@ body {
   --sky-panel: rgba(38, 44, 88, 0.82);
   --sky-border: rgba(255, 156, 92, 0.25);
   --sky-shadow: rgba(75, 76, 146, 0.22);
-  transition: --sky-top 1.5s linear, --sky-mid 1.5s linear, --sky-bot 1.5s linear,
-    --sky-panel 1.5s linear, --sky-border 1.5s linear, --sky-shadow 1.5s linear;
   background: linear-gradient(
     160deg,
     var(--sky-top, #4b4c92) 0%,
@@ -30,29 +32,24 @@ body {
   ) !important;
 }
 
-/* 场景双图层：::before/::after 互为前后台。skin.js 每次重建把新 SVG 写入背层变量
-   （--sky-art / --sky-art-b 交替），再翻转 --sky-a-on/--sky-b-on 标志，由 opacity
-   过渡完成 1.2s 交叉淡化——background-image 本身不可插值，双图层是消除整图瞬换的
-   唯一途径。js 降级时仅 ::before 挂静态兜底图，::after 无图透明，行为与单层一致 */
-body::before,
-body::after {
+/* 场景层：单图层硬换（skin.js 预解码后一次写入 --sky-art）。
+   will-change 把这个全视口浮层常驻提升为独立合成层——换图只重栅格化本层，下方
+   界面不参与重绘；双图层交叉淡化方案已移除（见顶部性能基线）。
+   contain: strict 切断布局/绘制外溢，把重栅格化范围钉死在本层。
+   js 降级时此层挂静态兜底图 sky.svg，行为一致 */
+body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 2147482900;
+  background-image: var(--sky-art, url("./sky.svg"));
   background-position: center bottom;
   background-repeat: no-repeat;
   background-size: cover;
+  opacity: var(--sky-art-opacity, 0.22);
   pointer-events: none;
-  transition: opacity 1.2s ease;
-}
-body::before {
-  background-image: var(--sky-art, url("./sky.svg"));
-  opacity: calc(var(--sky-art-opacity, 0.22) * var(--sky-a-on, 1));
-}
-body::after {
-  background-image: var(--sky-art-b, none);
-  opacity: calc(var(--sky-art-opacity, 0.22) * var(--sky-b-on, 0));
+  contain: strict;
+  will-change: transform, opacity;
 }
 
 body [role="dialog"] {

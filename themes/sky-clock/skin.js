@@ -1,7 +1,9 @@
 /* Sky Clock · 四时天空 —— 主题伴随脚本（new Function 函数体，返回拆除回调）。
    职责：按真实时间插值「天空时刻表」，每 30s（墙钟半分钟对齐）重建一次场景 SVG，
-   经 ::before/::after 双图层交叉淡化写入，同步改写 skin.css 引用的 --sky-* 变量
+   预解码后单帧换图写入 body::before，同步改写 skin.css 引用的 --sky-* 变量
    与界面明暗模式（明暗翻转走 0.20–0.40 亮度过渡带 + 迟滞，带内颜色连续插值）。
+   刷新为「零动画、差量写入」：每 30s 天色变化 ≤1/255，不做任何 CSS 过渡；值未变的
+   变量/令牌/属性一律不写，避免无谓的全树样式重算与整屏重绘（见 tick 前注释）。
    明暗模式由本脚本接管（theme.json 声明 dynamicMode，菜单跳过钉住）；
    写类名/属性的方式与菜单 writeMode 完全一致（六个类 + themeKind/themeName +
    colorScheme），观察者在应用回写时重新断言，检查先于写入故收敛无环。
@@ -321,6 +323,27 @@ const buildSvg = (h, sky, phase) => {
   );
 };
 
+// ---------- 场景量化：把「看不见的变化」挡在整屏重栅格化之外 ----------
+// 场景层只有 0.18–0.24 不透明度、叠在 body 渐变之上。1/255 的色差经 0.2 倍衰减后
+// 落到 0.2/255，远在显示量化之下；天体每 30s 位移 0.86px 同样不可分辨。把场景的
+// 几何时间对齐到 1 分钟、颜色对齐到 4/255 栅格后，相邻 tick 常得到完全相同的场景串，
+// 签名门控（见 swapArt）即可整帧跳过（实测一天 2880 次 tick 省掉约 1/3 重栅格化）。
+// 精细的天色流动由 body 渐变（满不透明度、差量硬写）承担，不受此量化影响。
+const GEOM_STEP = 60;   // 秒：几何时间栅格（太阳位移 ≤1.7px/步，屏上 ≤3px）
+const COLOR_STEP = 4;   // /255：场景色栅格（0.2 不透明度下屏上 ≤0.3/255）
+const quantHour = (h) => Math.round((h * 3600) / GEOM_STEP) * (GEOM_STEP / 3600);
+const quantHex = (hex) => rgb2hex(hex2rgb(hex).map((v) => Math.round(v / COLOR_STEP) * COLOR_STEP));
+const quantScene = (sky) => ({
+  ...sky,
+  top: quantHex(sky.top),
+  mid: quantHex(sky.mid),
+  bot: quantHex(sky.bot),
+  ridge: sky.ridge.map(quantHex),
+});
+// 场景签名：抹掉 SMIL 的 begin 相位（只影响动画起点、不改渲染结果），
+// 相同签名即「渲染等价」，swapArt 据此跳过换图
+const artSignature = (svg) => svg.replace(/begin="[^"]*"/g, "");
+
 // ---------- 明暗模式自写（与菜单 writeMode 同一套属性/类名） ----------
 const MODE_CLASSES = ["light", "vscode-light", "cb-light", "dark", "vscode-dark", "cb-dark"];
 const DARK_CLASSES = ["dark", "vscode-dark", "cb-dark"];
@@ -350,10 +373,21 @@ const writeMode = (dark) => {
 
 // ---------- 主刷新 ----------
 const SKY_VARS = [
-  "--sky-art", "--sky-art-b", "--sky-a-on", "--sky-b-on",
+  "--sky-art",
   "--sky-top", "--sky-mid", "--sky-bot",
   "--sky-panel", "--sky-border", "--sky-shadow", "--sky-art-opacity", "--sky-scheme",
 ];
+// 差量写入：body 内联样式每改一次，所有继承 --sky-* 的元素都要重算样式、整屏重绘。
+// 30s 一跳的色值多数时候取整后不变——值相同就不碰 DOM
+const written = new Map();
+const setVar = (k, v) => {
+  if (written.get(k) === v) return;
+  written.set(k, v);
+  document.body.style.setProperty(k, v);
+};
+const setData = (k, v) => {
+  if (document.body.dataset[k] !== v) document.body.dataset[k] = v;
+};
 // ---------- 中性灰表面统一着色 ----------
 // 原生深色表面分两套令牌：画布系（--wb-home-bg-*/--cr-bg-canvas/--wb-sidebar-bg/--cb-tab-*，
 // 会话页/新建任务页/侧栏底）与卡片系（--wb-bg-*/--cb-bg-*，右侧详情栏/无对话任务页/弹层），
@@ -433,11 +467,28 @@ try {
   if (saved && typeof saved === "object") nativeCache = { dark: saved.dark || null, light: saved.light || null };
 } catch { /* 无 localStorage（测试桩/受限环境） */ }
 let cacheFresh = { dark: false, light: false };
-const applied = new Set();
+// 令牌差量写入：body 上每个 setProperty 都让继承该变量的整棵子树失效、触发全页重绘。
+// 原实现每 30s 把上百个 !important 令牌整表重写一遍，哪怕值分毫未变——这是「到点抽丝
+// 刷屏」的主因之一。改为维护「已写入值」表，只写变了的、只撤不再需要的
+const applied = new Map();
 const clearApplied = () => {
   const st = document.body.style;
-  applied.forEach((p) => st.removeProperty(p));
+  applied.forEach((_, p) => st.removeProperty(p));
   applied.clear();
+};
+const reconcile = (next) => {
+  const st = document.body.style;
+  applied.forEach((_, n) => {
+    if (!next.has(n)) {
+      st.removeProperty(n);
+      applied.delete(n);
+    }
+  });
+  next.forEach((v, n) => {
+    if (applied.get(n) === v) return;
+    applied.set(n, v);
+    st.setProperty(n, v, "important");
+  });
 };
 const readNative = (dark) => {
   if (typeof getComputedStyle !== "function") return;
@@ -456,25 +507,26 @@ const readNative = (dark) => {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(nativeCache)); } catch { /* 忽略 */ }
 };
 // 按当前明暗与过渡带进度写入全部中性表面令牌（内联 !important 压过原生规则）。
-// hue 为浅色着色/过渡带去灰共用的天色色相向量（见 tick）
+// hue 为浅色着色/过渡带去灰共用的天色色相向量（见 tick）。
+// 先算出目标表再交给 reconcile 差量落盘，避免「清空→整表重写」的无谓重绘
 const applySurfaces = (dark, flipT, tint, hue) => {
   readNative(dark);
   const darkNative = nativeCache.dark, lightNative = nativeCache.light;
-  const st = document.body.style;
+  const next = new Map();
   // 纯浅色时段（flipT=0）：给浅色中性表面加天色色相偏移——界面从「无彩灰」变为
   // 「带天色倾向的浅灰」，与天空/山脊同族；明度阶梯与透明度不动
   if (!dark && flipT <= 0) {
-    clearApplied();
-    if (!lightNative) return;
-    for (const n in lightNative) {
-      const rgb = lightNative[n];
-      if (!isLightNeutral(rgb)) continue;
-      st.setProperty(n, rgb2hex(rgb.map((v, i) => v + hue[i])), "important");
-      applied.add(n);
+    if (lightNative) {
+      for (const n in lightNative) {
+        const rgb = lightNative[n];
+        if (!isLightNeutral(rgb)) continue;
+        next.set(n, rgb2hex(rgb.map((v, i) => v + hue[i])));
+      }
     }
+    reconcile(next);
     return;
   }
-  if (!darkNative || flipT <= 0) { clearApplied(); return; }
+  if (!darkNative || flipT <= 0) { reconcile(next); return; }
   // 过渡带变暗改平方缓动：带前段保持浅色，暗化压缩到类名翻转之前，漫长的
   // 「半暗死灰」中段大幅缩短；带内再叠天色色相（峰值在带中央 hueAmt=1），
   // 线性插值的中点本是不饱和死灰，带色相的灰才不脏
@@ -488,19 +540,50 @@ const applySurfaces = (dark, flipT, tint, hue) => {
     const rgb = light && ease < 1
       ? light.map((v, i) => lerp(v, tinted[i], ease) + hue[i] * hueAmt)
       : tinted;
-    st.setProperty(n, rgb2hex(rgb), "important");
-    applied.add(n);
+    next.set(n, rgb2hex(rgb));
   }
+  reconcile(next);
 };
 // 明暗翻转窗口：天空中带亮度 L ∈ [0.20, 0.40] 为过渡带，flipT 0=纯亮 1=纯暗。
 // 带内所有主题自有颜色连续插值；类名翻转带迟滞（flipT≥0.98 转暗、≤0.02 转亮），
 // 发生在带缘、表面色已就位之后，消除「到点整屏瞬切」
 const FLIP_HI = 0.40, FLIP_LO = 0.20;
 const flipTof = (lum) => Math.min(1, Math.max(0, (FLIP_HI - lum) / (FLIP_HI - FLIP_LO)));
-// 双图层交叉淡化：新场景写入背层再翻转 on 标志，由 skin.css 的 opacity 过渡完成淡入淡出。
-// 首次 tick 两层同图、A 层在位（无淡出过程），之后才交替换层
-let frontIsA = true;
+
+// ---------- 场景换图：单图层 + 签名门控 + 预解码 ----------
+// 原实现用 ::before/::after 双图层做 1.2s 交叉淡化。代价是：两个全视口浮层（z-index
+// 2147482900，压在整个界面之上）同时带 background-image，且 72 帧里每帧都要把两张
+// 全屏 SVG 合成一次——光栅瓦片逐块提交就是用户看到的「颜色渐变抽丝刷屏」。
+// 而交叉淡化本身并无必要：相邻两帧天色差 ≤1/255、天体位移 ≤1px（已实测），
+// 直接换图在视觉上无法分辨。故退回单图层硬换，并加两道闸：
+//   1) 签名门控（artSignature + 场景量化）——渲染等价就不换图。既省掉整屏重栅格化，
+//      也让云漂移/星闪的 SMIL 时间线连续运行而不被重建打断。
+//   2) 预解码——先 new Image().decode() 把新图解析完，再写入 background-image，
+//      把 XML 解析/构图从绘制路径上挪走，换图成为一次原子提交。
+let artKey = "";
 let artInit = false;
+const swapArt = (svg) => {
+  const key = artSignature(svg);
+  if (key === artKey) return; // 渲染结果等价：不碰 DOM，SMIL 时间线继续跑
+  artKey = key;
+  const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  const commit = () => setVar("--sky-art", 'url("' + url + '")');
+  // 首帧同步写入：此时 --sky-art 尚未定义，异步等待会先闪一下 skin.css 的静态兜底图
+  if (artInit) {
+    try {
+      const img = new Image();
+      img.src = url;
+      if (typeof img.decode === "function") {
+        img.decode().then(commit, commit);
+        return;
+      }
+      if (!img.complete) { img.onload = commit; img.onerror = commit; return; }
+    } catch { /* 无 Image（Node 测试桩/受限环境）：直接写入 */ }
+  }
+  artInit = true;
+  commit();
+};
+
 const tick = () => {
   const d = new Date();
   const h = d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
@@ -510,55 +593,38 @@ const tick = () => {
   const flipT = flipTof(lum);
   // 迟滞翻转：过渡带内维持现状，避免阈值附近来回抖动
   const dark = currentDark === null ? flipT >= 0.5 : (currentDark ? flipT > 0.02 : flipT >= 0.98);
-  const svg = buildSvg(h, sky, phase);
-  const st = document.body.style;
-  const artUrl = 'url("data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg) + '")';
-  if (!artInit) {
-    artInit = true;
-    st.setProperty("--sky-art", artUrl);
-    st.setProperty("--sky-art-b", artUrl);
-    st.setProperty("--sky-a-on", "1");
-    st.setProperty("--sky-b-on", "0");
-  } else if (frontIsA) {
-    st.setProperty("--sky-art-b", artUrl);
-    st.setProperty("--sky-b-on", "1");
-    st.setProperty("--sky-a-on", "0");
-  } else {
-    st.setProperty("--sky-art", artUrl);
-    st.setProperty("--sky-a-on", "1");
-    st.setProperty("--sky-b-on", "0");
-  }
-  frontIsA = !frontIsA;
-  st.setProperty("--sky-top", sky.top);
-  st.setProperty("--sky-mid", sky.mid);
-  st.setProperty("--sky-bot", sky.bot);
+  // 场景几何时间对齐到 GEOM_STEP 栅格，配色走 COLOR_STEP 栅格（见上方量化说明）
+  swapArt(buildSvg(quantHour(h), quantScene(sky), phase));
+  setVar("--sky-top", sky.top);
+  setVar("--sky-mid", sky.mid);
+  setVar("--sky-bot", sky.bot);
   // 面板色由天际色派生：随 flipT 从亮侧（抬向白）连续过渡到暗侧（压向深海军蓝）
   const botRgb = hex2rgb(sky.bot);
   const target = [255, 255, 255].map((w, i) => lerp(w, [10, 17, 32][i], flipT));
   const mixT = lerp(0.6, 0.58, flipT);
   const panelRgb = botRgb.map((v, i) => lerp(v, target[i], mixT));
-  st.setProperty("--sky-panel", rgba(panelRgb, lerp(0.8, 0.82, flipT)));
+  setVar("--sky-panel", rgba(panelRgb, lerp(0.8, 0.82, flipT)));
   // 弹窗面板色由上方天空色派生（同 panel 混合比例）：弹窗是顶部下拉浮层，
   // 取色与视窗上半部的天色一致，而不是底部天际的暖色带
   const topRgb = hex2rgb(sky.top);
   const dialogRgb = topRgb.map((v, i) => lerp(v, target[i], mixT));
   // 边框/阴影同随 flipT 连续过渡（亮侧暖蓝灰 ↔ 暗侧冷蓝）
   const bc = [40, 90, 150].map((v, i) => lerp(v, [140, 180, 230][i], flipT));
-  st.setProperty("--sky-border", rgba(bc, lerp(0.16, 0.22, flipT)));
+  setVar("--sky-border", rgba(bc, lerp(0.16, 0.22, flipT)));
   const sc = [60, 110, 170].map((v, i) => lerp(v, [20, 50, 110][i], flipT));
-  st.setProperty("--sky-shadow", rgba(sc, lerp(0.18, 0.28, flipT)));
+  setVar("--sky-shadow", rgba(sc, lerp(0.18, 0.28, flipT)));
   // 夜间场景（星月/山脊剪影）需要存在感，但整屏浮层压在文字上方，过强会蒙雾发糊、
   // 白字对比度被吃掉（0.35 时白字亮度仅剩 ~65%，实测「灰蒙蒙」）——
   // 0.18（白天）→ 0.24（深夜）随 flipT 渐变，星月仍可辨而文字保持清晰
-  st.setProperty("--sky-art-opacity", lerp(0.18, 0.24, flipT).toFixed(3));
-  st.setProperty("--sky-scheme", dark ? "dark" : "light");
+  setVar("--sky-art-opacity", lerp(0.18, 0.24, flipT).toFixed(3));
+  setVar("--sky-scheme", dark ? "dark" : "light");
   // 实况色调钩子：主题选择弹窗打开时读它刷新背景/选中描边——天色每 30s 流转，
   // theme.json 里的静态 surface/accent 只是快照；mid 是当前时刻天空中间色，
   // 亮暗与明暗模式一致，弹窗文字色由菜单按亮度自适应
-  document.body.dataset.workbuddySkinTone = sky.mid;
+  setData("workbuddySkinTone", sky.mid);
   // 实况面板色钩子：弹窗背景取上方天空派生色（见上方 dialogRgb），
   // 避免直接用 sky.mid（天空中间色）或底部天际色导致色相偏差
-  document.body.dataset.workbuddySkinSurface = rgb2hex(dialogRgb);
+  setData("workbuddySkinSurface", rgb2hex(dialogRgb));
   writeMode(dark);
   // 中性表面色相：入夜（track→1）跟随 sky.mid，黄昏/黎明（L(mid)≥0.15）退回静态午夜海军蓝
   const track = Math.min(1, Math.max(0, (0.15 - lum) / 0.10));
@@ -599,9 +665,9 @@ if (document.head) sheetObserver.observe(document.head, { childList: true });
 document.body.dataset.skyJs = "1";
 
 // ---------- 定时：半分钟级刷新（对齐墙钟半分钟）；页面重新可见时补算（节流兜底） ----------
-// 每 30s 重建一次场景 SVG：单次开销 ≈ 字符串拼接 <1ms + 整屏 SVG 重栅格化 ~5ms，
-// 平均 CPU 占用 <0.2%；天体半分钟位移 ≤1px，天色经 skin.css 的 @property 颜色过渡、
-// 场景图经 ::before/::after 双图层交叉淡化，视觉即为连续流动，无到点瞬切。
+// 每 30s 重算一次天色：相邻帧天体位移 ≤1px、天色差 ≤1/255，故全程零 CSS 动画——
+// 不做颜色过渡、不做图层淡化，只在值真的变了时写一次。单次开销 ≈ 字符串拼接 <1ms
+// ＋（仅签名变化时）一次整屏 SVG 重栅格化；页面隐藏时浏览器自动节流，可见时补算。
 tick();
 let interval = null;
 const toNextHalf = 30000 - (Date.now() % 30000) + 30;
@@ -623,6 +689,7 @@ return function teardown() {
   sheetObserver.disconnect();
   const st = document.body.style;
   SKY_VARS.forEach((p) => st.removeProperty(p));
+  written.clear();
   clearApplied();
   delete document.body.dataset.skyJs;
   delete document.body.dataset.workbuddySkinTone;

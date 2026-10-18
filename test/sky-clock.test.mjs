@@ -185,22 +185,46 @@ test("sky-clock skin.js：浅色时段浅色中性表面加天色色相偏移，
   }
 });
 
-test("sky-clock skin.js：双图层交叉淡化——激活即双图层同图、A 层在位", () => {
+test("sky-clock skin.js：场景为单图层硬换，不再输出双图层交叉淡化变量", () => {
   const dom = installDomStubs();
   try {
     const teardown = new Function(skinJs)();
     const p = dom.body.style.props;
-    // 双图层变量齐备且首帧同图（避免从静态兜底图淡出）
-    for (const key of ["--sky-art", "--sky-art-b", "--sky-a-on", "--sky-b-on"]) {
-      assert.ok(p.has(key), `缺少变量 ${key}`);
+    assert.ok(p.has("--sky-art"), "首帧应同步写入场景图（避免闪静态兜底图）");
+    // 双图层交叉淡化已移除：全视口浮层上的 1.2s opacity 过渡是「抽丝刷屏」主因
+    for (const key of ["--sky-art-b", "--sky-a-on", "--sky-b-on"]) {
+      assert.ok(!p.has(key), `${key} 应已移除（单图层方案）`);
     }
-    assert.equal(p.get("--sky-art"), p.get("--sky-art-b"), "首帧双图层应同图");
-    assert.equal(p.get("--sky-a-on"), "1");
-    assert.equal(p.get("--sky-b-on"), "0");
     // art-opacity 为连续数值（flipT 插值），不再是二元 0.22/0.35
     assert.match(p.get("--sky-art-opacity"), /^0\.\d{3}$/);
     teardown();
   } finally {
+    dom.restore();
+  }
+});
+
+test("sky-clock skin.js：差量写入——同一时刻重复 tick 不碰 DOM", () => {
+  const dom = installDomStubs();
+  const RealDate = globalThis.Date;
+  const now = new RealDate(2026, 9, 15, 23, 0, 0).getTime();
+  globalThis.Date = class extends RealDate {
+    constructor(...a) { super(...(a.length ? a : [now])); }
+    static now() { return now; }
+  };
+  // 统计 setProperty 调用次数：差量写入下，同一时刻重复 tick 不应产生任何写入
+  let writes = 0;
+  const raw = dom.body.style.setProperty.bind(dom.body.style);
+  dom.body.style.setProperty = (k, v) => { writes++; return raw(k, v); };
+  try {
+    const teardown = new Function(skinJs)();
+    const first = writes;
+    assert.ok(first > 0, "首帧应有写入");
+    // visibilitychange 触发补算 tick：时刻未变 → 变量值全同 → 零写入
+    dom.listeners.get("visibilitychange")();
+    assert.equal(writes, first, `同一时刻重复 tick 不应写入，实际多写 ${writes - first} 次`);
+    teardown();
+  } finally {
+    globalThis.Date = RealDate;
     dom.restore();
   }
 });
@@ -223,8 +247,30 @@ test("sky-clock skin.js：teardown 清除定时器、监听与全部 --sky-* 变
 // 月相引擎为纯函数段（FRAMES 起至明暗模式前），可在 Node 端脱离 DOM 直接求值
 const lib = eval(
   skinJs.slice(skinJs.indexOf("const FRAMES"), skinJs.indexOf("// ---------- 明暗模式")) +
-    "; ({ moonPhase, moonLitPath, buildSvg, frameAt, cloudState })",
+    "; ({ moonPhase, moonLitPath, buildSvg, frameAt, cloudState, quantHour, quantScene, artSignature })",
 );
+
+test("sky-clock 签名门控：抹掉 SMIL begin 后渲染等价的场景不重建，一天省下 ≥25% 整屏重栅格化", () => {
+  // begin 只决定动画起点相位，不改渲染结果——签名必须把它排除
+  const h = lib.quantHour(23);
+  const svg = lib.buildSvg(h, lib.quantScene(lib.frameAt(23)), lib.moonPhase(Date.UTC(2026, 0, 3)));
+  assert.ok(svg.includes('begin="'), "夜间场景应含 SMIL begin 相位");
+  assert.ok(!lib.artSignature(svg).includes('begin="'), "签名应抹掉 begin 相位");
+  // 量化到 1 分钟几何栅格：30s 的 tick 周期内，相邻两刻常落在同一栅格
+  assert.equal(lib.quantHour(12 + 10 / 3600), lib.quantHour(12 + 20 / 3600));
+  // 一天 2880 次 tick（每 30s）里实际需要换图的次数——量化+签名门控应挡掉 ≥25%
+  const base = new Date(2026, 9, 15, 0, 0, 0).getTime();
+  let prev = null, swaps = 0, total = 0;
+  for (let s = 0; s < 86400; s += 30) {
+    const hour = s / 3600;
+    const key = lib.artSignature(
+      lib.buildSvg(lib.quantHour(hour), lib.quantScene(lib.frameAt(hour)), lib.moonPhase(base + s * 1000)),
+    );
+    total++;
+    if (key !== prev) { swaps++; prev = key; }
+  }
+  assert.ok(swaps < total * 0.75, `换图率应 <75%（实测 ${((100 * swaps) / total).toFixed(1)}%）`);
+});
 
 test("sky-clock 月相：朔望月推算——新月/上弦/满月/下弦的照亮比与命名", () => {
   const epoch = Date.UTC(2000, 0, 6, 18, 14); // 参考新月
