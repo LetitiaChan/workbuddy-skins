@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -16,6 +16,7 @@ import {
 } from "../src/injector.mjs";
 // doctor 兼容性探测已拆到 compat-probe.mjs（与注入编排零耦合），测试随之改导入源
 import { probeRendererCompat, summarizeCompatProbes } from "../src/compat-probe.mjs";
+import { loadTheme } from "../src/theme-schema.mjs";
 
 // 假 CDP Session：按表达式特征分流返回值，并记录完整调用序列
 class FakeSession {
@@ -442,6 +443,44 @@ test("applySkin：签名配色主题（signature，无 css 无 hero）基座+装
     // tagline 直接追加（生成物不可能自带 ::after，无需跳过检测）
     assert.ok(expression.includes(".wb-home-header::after"), "tagline 标语应追加");
     // 无 heroPath 也不掉进 hero 分支报错
+  });
+});
+
+test("applySkin：baseTheme 继承主题的 css/js 资源以文件所在目录（base 目录）为基准内联", async () => {
+  await withTempDir(async (dir) => {
+    // base 主题持有 skin.css/skin.js 与它们引用的 ./asset；子主题只有 theme.json
+    const baseDir = join(dir, "base-theme");
+    const childDir = join(dir, "child-theme");
+    await mkdir(baseDir, { recursive: true });
+    await mkdir(childDir);
+    const png = Buffer.from("89504e470d0a1a0a", "hex");
+    await writeFile(join(baseDir, "logo.png"), png);
+    await writeFile(join(baseDir, "skin.css"), 'a { background: url("./logo.png"); }');
+    await writeFile(join(baseDir, "skin.js"), 'const p = "./logo.png"; return null;');
+    await writeFile(
+      join(baseDir, "theme.json"),
+      JSON.stringify({ schemaVersion: 1, id: "base-theme", name: "Base", css: "skin.css", js: "skin.js" }),
+    );
+    await writeFile(
+      join(childDir, "theme.json"),
+      JSON.stringify({ schemaVersion: 1, id: "child-theme", name: "Child", baseTheme: "base-theme", colors: { surface: "#0A1426" } }),
+    );
+    const child = await loadTheme(childDir);
+    assert.ok(child.cssPath.startsWith(baseDir), "css 应解析进 base 目录");
+    const { Session, sessions } = sessionFactory();
+    const result = await applySkin({
+      loadedTheme: child,
+      themes: [child],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    assert.equal(result.applied, 1);
+    const expression = sessions[0].lastCall();
+    // css 与 js 里的 ./logo.png 都以 base 目录为基准内联成 data URL
+    const dataUrl = `data:image/png;base64,${png.toString("base64")}`;
+    assert.ok(expression.includes(dataUrl), "base 目录的引用资源应内联为 data URL");
+    assert.ok(!expression.includes('url("./logo.png")'), "css 相对引用应全部被重写");
+    assert.ok(expression.includes('"surface":"#0A1426"'), "子主题配色应透传进菜单脚本");
   });
 });
 

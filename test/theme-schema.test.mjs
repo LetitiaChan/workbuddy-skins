@@ -389,6 +389,90 @@ test("loadTheme：签名主题无 css/hero 路径，其余资源照常解析", a
   });
 });
 
+// baseTheme 继承的测试夹具：base 主题（css+js）与只含 theme.json 的子主题
+async function withTwinThemes(fn) {
+  await withTempDir(async (dir) => {
+    const baseDir = join(dir, "tdp-pro");
+    const childDir = join(dir, "tdp-pro-dark");
+    await mkdir(baseDir, { recursive: true });
+    await mkdir(childDir);
+    await writeFile(join(baseDir, "skin.css"), "body { color: red; }");
+    await writeFile(join(baseDir, "skin.js"), "return null;");
+    await writeFile(
+      join(baseDir, "theme.json"),
+      JSON.stringify({ schemaVersion: 1, id: "tdp-pro", name: "Base", css: "skin.css", js: "skin.js" }),
+    );
+    await writeFile(
+      join(childDir, "theme.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: "tdp-pro-dark",
+        name: "Dark",
+        baseTheme: "tdp-pro",
+        colors: { accent: "#112233" },
+      }),
+    );
+    return fn({ baseDir, childDir });
+  });
+}
+
+test("baseTheme 继承：manifest 顶层合并（子覆盖 base），缺失文件回退 base 目录", async () => {
+  await withTwinThemes(async ({ baseDir, childDir }) => {
+    const loaded = await loadTheme(childDir);
+    // 继承字段：css/js 来自 base manifest
+    assert.equal(loaded.manifest.baseTheme, "tdp-pro");
+    assert.equal(loaded.manifest.css, "skin.css");
+    assert.equal(loaded.manifest.js, "skin.js");
+    // 文件回退：子目录没有 skin.css/skin.js，解析进 base 目录
+    assert.ok(loaded.cssPath.startsWith(baseDir), `cssPath 应在 base 目录：${loaded.cssPath}`);
+    assert.ok(loaded.jsPath.startsWith(baseDir), `jsPath 应在 base 目录：${loaded.jsPath}`);
+    // 顶层覆盖语义：colors 整体替换（accent 是子的，secondary 走 DEFAULT 而非 base 归并）
+    assert.equal(loaded.manifest.colors.accent, "#112233");
+    assert.equal(loaded.manifest.name, "Dark");
+    // 子目录放进自有同名文件后优先于 base（逐文件覆盖）
+    await writeFile(join(childDir, "skin.css"), "body { color: blue; }");
+    const overridden = await loadTheme(childDir);
+    assert.ok(overridden.cssPath.startsWith(childDir), `子目录自有文件应优先：${overridden.cssPath}`);
+    assert.ok(overridden.jsPath.startsWith(baseDir), "未覆盖的文件仍回退 base");
+  });
+});
+
+test("baseTheme 字段校验与继承边界：id 形态 / 自引用 / 链式 / base 缺失 / id 不符", async () => {
+  const child = { schemaVersion: 1, id: "child-theme", name: "C", css: "skin.css" };
+  assert.equal(validateThemeManifest(child).baseTheme, null);
+  assert.equal(validateThemeManifest({ ...child, baseTheme: "parent-theme" }).baseTheme, "parent-theme");
+  for (const baseTheme of ["../escape", "UPPER", "a/b", 1, true]) {
+    assert.throws(
+      () => validateThemeManifest({ ...child, baseTheme }),
+      /baseTheme must be a theme id/,
+      `baseTheme=${JSON.stringify(baseTheme)}`,
+    );
+  }
+  assert.throws(
+    () => validateThemeManifest({ ...child, baseTheme: "child-theme" }),
+    /cannot reference itself/,
+  );
+  // 链式继承拒绝：base 自身再声明 baseTheme（循环由此在构造上不可能）
+  await withTempDir(async (dir) => {
+    await mkdir(join(dir, "grand"), { recursive: true });
+    await mkdir(join(dir, "parent"));
+    await mkdir(join(dir, "child-a"));
+    await writeFile(join(dir, "grand", "hero.png"), Buffer.from("png"));
+    await writeFile(join(dir, "grand", "theme.json"), JSON.stringify({ schemaVersion: 1, id: "grand", name: "G", hero: "hero.png" }));
+    await writeFile(join(dir, "parent", "theme.json"), JSON.stringify({ schemaVersion: 1, id: "parent", name: "P", baseTheme: "grand" }));
+    await writeFile(join(dir, "child-a", "theme.json"), JSON.stringify({ schemaVersion: 1, id: "child-a", name: "C", baseTheme: "parent" }));
+    await assert.rejects(loadTheme(join(dir, "child-a")), /chains are not supported/);
+    // base 目录缺失 / base id 不符
+    await writeFile(join(dir, "child-a", "theme.json"), JSON.stringify({ schemaVersion: 1, id: "child-a", name: "C", baseTheme: "ghost" }));
+    await assert.rejects(loadTheme(join(dir, "child-a")), /invalid base theme manifest/);
+    await writeFile(join(dir, "child-a", "theme.json"), JSON.stringify({ schemaVersion: 1, id: "child-a", name: "C", baseTheme: "grand" }));
+    // 合法继承：hero 从 grand 目录回退解析（若抛错则测试自然失败）
+    await loadTheme(join(dir, "child-a"));
+    await writeFile(join(dir, "grand", "theme.json"), JSON.stringify({ schemaVersion: 1, id: "renamed", name: "G", hero: "hero.png" }));
+    await assert.rejects(loadTheme(join(dir, "child-a")), /base theme id mismatch/);
+  });
+});
+
 test("loadTheme：解析 jsPath，缺失时拒绝", async () => {
   await withTempDir(async (dir) => {
     await writeFile(join(dir, "skin.css"), "body { color: red; }");

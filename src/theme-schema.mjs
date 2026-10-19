@@ -312,6 +312,18 @@ function normalizeDynamicMode(dynamicMode, js) {
   return dynamicMode;
 }
 
+// baseTheme：孪生/衍生主题继承（如 tdp-pro-dark 继承 tdp-pro）。声明后 manifest
+// 缺省字段在 loadTheme 合并时继承 base 的 theme.json，引用文件缺失时回退 base
+// 目录解析，子目录只留差异文件。id 形态校验使路径逃逸在构造上不可能（无分隔符）
+function normalizeBaseTheme(baseTheme, id) {
+  if (baseTheme === undefined || baseTheme === null) return null;
+  if (typeof baseTheme !== "string" || !THEME_ID.test(baseTheme)) {
+    throw new Error("theme baseTheme must be a theme id (lowercase letters, numbers, and hyphens)");
+  }
+  if (baseTheme === id) throw new Error("theme baseTheme cannot reference itself");
+  return baseTheme;
+}
+
 export function validateThemeManifest(input) {
   if (!isRecord(input)) {
     throw new Error("theme manifest must be an object");
@@ -345,6 +357,7 @@ export function validateThemeManifest(input) {
     schemaVersion: THEME_SCHEMA_VERSION,
     id: input.id,
     name: input.name.trim(),
+    baseTheme: normalizeBaseTheme(input.baseTheme, input.id),
     hero,
     poster: hero === null ? null : normalizePoster(input.poster, hero),
     css,
@@ -395,6 +408,22 @@ async function resolveMediaFile(
   return { path: filePath, size: info.size };
 }
 
+// baseTheme 继承的文件回退：子主题目录缺失的引用文件到 base 目录解析（子目录同名
+// 文件优先，可逐文件覆盖）；逃逸检查按实际解析所在的 root 各自执行，安全边界不变
+async function resolveMediaFileWithFallback(dirs, baseDirs, mediaPath, label, options) {
+  try {
+    const result = await resolveMediaFile(dirs, mediaPath, label, options);
+    // missingAsNull 路径（mascot）：子目录缺失时先试 base，base 也缺才按未配置处理
+    if (result === null && baseDirs) return resolveMediaFile(baseDirs, mediaPath, label, options);
+    return result;
+  } catch (error) {
+    if (baseDirs && (error.code === "ENOENT" || error.code === "ENOTDIR")) {
+      return resolveMediaFile(baseDirs, mediaPath, label, options);
+    }
+    throw error;
+  }
+}
+
 // rawManifest 可选：listThemes 已经把每个 theme.json 读出并解析过一遍，
 // apply 路径紧接着对每个主题调本函数又读一遍、解析一遍——65 个主题就是 130 次
 // readFile + 130 次 JSON.parse，其中一半纯属重复。调用方把已解析的对象透传进来即可省掉。
@@ -412,24 +441,49 @@ export async function loadTheme(themeDir, rawManifest) {
       throw new Error(`invalid theme manifest ${manifestPath}: ${error.message}`, { cause: error });
     }
   }
+
+  // baseTheme 继承：与 base 的 theme.json 合并（本主题的顶层字段整体覆盖 base 同名字段，
+  // 如 colors 是四键整体替换而非逐键归并），素材文件解析缺失时回退 base 目录。
+  // 只允许一层——base 自身再声明 baseTheme 直接拒绝，循环继承由此在构造上不可能
+  let baseDirs = null;
+  if (isRecord(raw) && raw.baseTheme !== undefined) {
+    const baseTheme = normalizeBaseTheme(raw.baseTheme, raw.id); // 先校验 id 形态再拼路径
+    const baseRoot = resolve(root, "..", baseTheme);
+    let baseRaw;
+    try {
+      baseRaw = JSON.parse(await readFile(join(baseRoot, "theme.json"), "utf8"));
+    } catch (error) {
+      throw new Error(`invalid base theme manifest ${join(baseRoot, "theme.json")}: ${error.message}`, { cause: error });
+    }
+    if (isRecord(baseRaw) && baseRaw.baseTheme !== undefined) {
+      throw new Error(`theme baseTheme chains are not supported (${baseTheme} itself extends another theme)`);
+    }
+    if (!isRecord(baseRaw) || baseRaw.id !== baseTheme) {
+      throw new Error(`base theme id mismatch: expected ${baseTheme}, got ${baseRaw?.id}`);
+    }
+    raw = { ...baseRaw, ...raw };
+    baseDirs = { root: baseRoot, realRoot: await realpath(baseRoot) };
+  }
   const manifest = validateThemeManifest(raw);
 
   const dirs = { root, realRoot: await realpath(root) };
+  const resolveFile = (mediaPath, label, options) =>
+    resolveMediaFileWithFallback(dirs, baseDirs, mediaPath, label, options);
   // 纯 CSS 主题（css 字段、无 hero）：只校验 css 文件本身；url()/import 资源
   // 在注入阶段由 injector 内联时再逐个解析校验
-  const hero = manifest.hero === null ? null : await resolveMediaFile(dirs, manifest.hero, "hero");
+  const hero = manifest.hero === null ? null : await resolveFile(manifest.hero, "hero");
   if (hero && VIDEO_EXTENSIONS.has(extname(manifest.hero).toLowerCase()) && hero.size > MAX_THEME_VIDEO_BYTES) {
     throw new Error(
       `theme hero video exceeds the ${MAX_THEME_VIDEO_BYTES / 1024 / 1024}MB limit`,
     );
   }
   const poster = manifest.poster
-    ? await resolveMediaFile(dirs, manifest.poster, "poster")
+    ? await resolveFile(manifest.poster, "poster")
     : null;
-  const css = manifest.css ? await resolveMediaFile(dirs, manifest.css, "css") : null;
-  const js = manifest.js ? await resolveMediaFile(dirs, manifest.js, "js") : null;
+  const css = manifest.css ? await resolveFile(manifest.css, "css") : null;
+  const js = manifest.js ? await resolveFile(manifest.js, "js") : null;
   const thumbnail = manifest.thumbnail
-    ? await resolveMediaFile(dirs, manifest.thumbnail, "thumbnail")
+    ? await resolveFile(manifest.thumbnail, "thumbnail")
     : null;
   if (thumbnail && thumbnail.size > MAX_THEME_THUMBNAIL_BYTES) {
     throw new Error(`theme thumbnail exceeds the ${MAX_THEME_THUMBNAIL_BYTES / 1024}KB limit`);
@@ -438,7 +492,7 @@ export async function loadTheme(themeDir, rawManifest) {
   // 原生槽位仅 140px 见方，比 thumbnail 卡得更小。
   // 图片缺失时按未配置处理，主题照常加载，保留原生机器人
   const mascot = manifest.mascot
-    ? await resolveMediaFile(dirs, manifest.mascot, "mascot", { missingAsNull: true })
+    ? await resolveFile(manifest.mascot, "mascot", { missingAsNull: true })
     : null;
   if (mascot && mascot.size > MAX_THEME_MASCOT_BYTES) {
     throw new Error(`theme mascot exceeds the ${MAX_THEME_MASCOT_BYTES / 1024}KB limit`);

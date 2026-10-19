@@ -123,7 +123,10 @@ async function themeEntryBody(loadedTheme) {
   // 10 个内置 palette 主题的装饰层已数据化为 theme.json 的 signature 字段
   // （走下方 signature 分支）；本 cssPath 分支保留给手写 CSS 形态的 palette 主题
   if (loadedTheme.cssPath) {
-    const rawCss = await inlineCssAssets(await readFile(loadedTheme.cssPath, "utf8"), loadedTheme.root, loadedTheme.manifest.id);
+    // url() 基准目录取 css 文件实际所在目录而非 loadedTheme.root：
+    // baseTheme 继承时（如 tdp-pro-dark）css 物理上位于 base 目录，
+    // 其 ./asset 引用必须相对 base 目录解析；普通主题 dirname(cssPath) === root，行为不变
+    const rawCss = await inlineCssAssets(await readFile(loadedTheme.cssPath, "utf8"), dirname(loadedTheme.cssPath), loadedTheme.manifest.id);
     let css = loadedTheme.manifest.group === "palette"
       ? buildPaletteCss({ theme: loadedTheme.manifest }) + "\n" + rawCss
       : rawCss;
@@ -135,7 +138,7 @@ async function themeEntryBody(loadedTheme) {
       css = css + "\n" + buildTaglineCss(loadedTheme.manifest);
     }
     const js = loadedTheme.jsPath
-      ? await inlineJsAssets(await readFile(loadedTheme.jsPath, "utf8"), loadedTheme.root, loadedTheme.manifest.id)
+      ? await inlineJsAssets(await readFile(loadedTheme.jsPath, "utf8"), dirname(loadedTheme.jsPath), loadedTheme.manifest.id)
       : null;
     return {
       id: loadedTheme.manifest.id,

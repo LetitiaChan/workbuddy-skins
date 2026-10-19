@@ -76,8 +76,9 @@ DOM 组件；但**声明几乎条条不同**（逐字节相同的只有个位数
   链路（见 commit f160e96）
 - **`!important` 与层叠顺序**：皮肤 CSS 与基座/原生样式同优先级时靠后书写胜出；
   装饰层、晕染层都依赖这个顺序，插入新规则时确认落点
-- **tdp-pro / tdp-pro-dark 孪生**：7 个共享文件逐字节一致由测试钉住，改一份必须
-  同步另一份（长期方案是 schema 层的 baseTheme 继承，另行处理）
+- **tdp-pro / tdp-pro-dark 孪生**：已由 schema 的 `baseTheme` 继承消化——
+  tdp-pro-dark 只留 theme.json + 自有 thumbnail，共享文件物理上只有一份；
+  改 base（tdp-pro）即同时生效于两者，勿在子目录重建副本
 
 ## 落地后的自动兜底
 

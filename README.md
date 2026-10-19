@@ -250,6 +250,7 @@ node src/cli.mjs apply --theme my-skin
 - 可选 `mascot` 字段：首页/会话页输入框上方「成长伙伴」机器人的主题替换形象（主题目录内的 PNG/JPEG/WebP/GIF/AVIF，≤256KB，建议 256×256 透明底 WebP；GIF/动态 WebP 保留动画）。任意类型主题均可配置；未配置的主题不输出替换规则，原生机器人原样保留。实现为纯 CSS（Chromium `img { content: url() }` 整体换图 + `object-fit: contain` 入框 + 隐藏原生悬停动图 video），作用于 `wb-home-route__growth-buddy` / `conversation-input__growth-buddy` 两个槽位，随主题切换自动生效/还原。可搭配 `mascotScale`（0.5~3，默认 1，以槽位底部居中为锚点缩放，形象从站立点向上放大）与 `mascotOffset`（`{"x":0,"y":0}`，单位 px，±80 内，正 x 向右、正 y 向下，缩放之后施加）微调显示——按形象主体在图内的包围盒调参，保证上半身露出、头顶与左右不被裁出 140px 槽位框；两者须与 `mascot` 同配，默认值时不输出 transform，与历史行为一致
 - 可选 `js` 字段（如 `"js": "skin.js"`）携带伴随脚本：主题激活时作为函数体执行（`new Function`），返回值若是函数则作为拆除回调，在切换主题/恢复原生/暂停注入时调用；js 内的 `"./asset"` 相对资源引用（图片/音频/视频）同样内联为 data URL。用于 CSS 做不到的 DOM 注入与交互行为——TDP 主题主界面的宇航员动效层、QQ 2008 的音效（消息/失败/敲门，复用旧项目的 `WORKBUDDY_THEME_SOUND_ENABLED`/`VOLUME` 设置键，1200ms 节流）与企鹅挂件均由此实现。页面 CSP 禁 eval 时降级为警告，CSS 皮肤本体不受影响
 - 可选 `dynamicMode` 字段（布尔，须与 `js` 同配）：声明后菜单**不钉住**明暗模式（`applyMode` 跳过 pin），明暗写入权交给伴随 js——用于按时间等外部条件动态切换深浅的定制主题（如 Sky Clock 按天空亮度全天联动 `data-vscode-theme-kind` 与六个模式类名，写法和菜单 `writeMode` 同构）。普通主题不要开启：缺少钉住会让界面跟随应用默认模式
+- 可选 `baseTheme` 字段（主题 id）：孪生/衍生主题继承——本主题与 base 的 theme.json 做顶层字段合并（本主题字段整体覆盖 base 同名字段，如 `colors` 四键整体替换），引用的素材文件在本目录缺失时回退 base 目录解析（本目录同名文件优先，可逐文件覆盖）。子目录只留差异文件：内置的 tdp-pro-dark 即以此继承 tdp-pro（仅 theme.json + 自有 thumbnail）。base 必须是 themes 同根下的合法主题、不得再声明 `baseTheme`（只许一层，循环继承在构造上不可能）；继承的 css/js 中 `url("./asset")` 等相对引用以**文件实际所在目录**（base 目录）为基准内联
 
 ### ✍️ 配色主题签名（signature）
 

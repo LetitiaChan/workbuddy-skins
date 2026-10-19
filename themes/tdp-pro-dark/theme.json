@@ -2,8 +2,7 @@
   "schemaVersion": 1,
   "id": "tdp-pro-dark",
   "name": "腾讯云 TDP · 深色",
-  "css": "skin.css",
-  "js": "skin.js",
+  "baseTheme": "tdp-pro",
   "thumbnail": "thumbnail.webp",
   "order": -11,
   "colors": {

@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,28 +32,26 @@ test("内置主题：全部通过 loadTheme 校验，伴随 js 可编译", async
   }
 });
 
-// tdp-pro 与 tdp-pro-dark 是孪生主题：除 theme.json 四色与 thumbnail 外，
-// 其余 7 个文件逐字节相同（skin.css 1200+ 行）。两份独立存放必然漂移——
-// 改了亮色忘了深色，用户只在切到另一半时才发现。先用护栏钉住一致性，
-// 真正的共享基座方案需要改 schema（normalizeMediaPath 拒绝 .. 路径），另行处理。
-const TDP_TWINS = ["tdp-pro", "tdp-pro-dark"];
-const TDP_SHARED_FILES = [
-  "skin.css",
-  "skin.js",
-  "hero-tdp-pro.webp",
-  "tdp-logo-dark.png",
-  "tdp-logo-light.png",
-  "WorkBuddy-logo-dark.svg",
-  "WorkBuddy-logo-light.svg",
-];
-
-test("tdp-pro / tdp-pro-dark：共享文件必须逐字节一致（防孪生主题漂移）", async () => {
-  const digest = async (theme, file) =>
-    createHash("sha256").update(await readFile(join(themesRoot, theme, file))).digest("hex");
-  for (const file of TDP_SHARED_FILES) {
-    const [a, b] = await Promise.all(TDP_TWINS.map((theme) => digest(theme, file)));
-    assert.equal(a, b, `${file} 在 tdp-pro 与 tdp-pro-dark 之间已漂移——改一份时必须同步另一份`);
-  }
+// tdp-pro 与 tdp-pro-dark 曾是孪生主题：除 theme.json 四色与 thumbnail 外，
+// 其余 7 个文件逐字节相同（skin.css 1200+ 行），两份独立存放必然漂移。
+// 现由 schema 的 baseTheme 继承消化：tdp-pro-dark 声明 "baseTheme": "tdp-pro"，
+// 共享文件物理上只剩一份（在 base 目录），漂移在结构上不可能发生。
+// 本测试钉住这个关系：子目录只含差异文件，css/js 解析进 base 目录
+test("tdp-pro-dark：baseTheme 继承 tdp-pro，子目录只留差异文件", async () => {
+  const loaded = await loadTheme(join(themesRoot, "tdp-pro-dark"));
+  assert.equal(loaded.manifest.baseTheme, "tdp-pro");
+  assert.equal(loaded.manifest.css, "skin.css", "css 字段应从 base manifest 继承");
+  // 继承文件解析进 base 目录（injector 的 url() 内联以文件所在目录为基准）
+  assert.ok(loaded.cssPath.startsWith(join(themesRoot, "tdp-pro")), `cssPath 应在 base 目录：${loaded.cssPath}`);
+  assert.ok(loaded.jsPath.startsWith(join(themesRoot, "tdp-pro")), `jsPath 应在 base 目录：${loaded.jsPath}`);
+  // 深色配色与标语仍是子主题自己的
+  assert.equal(loaded.manifest.colors.surface, "#0A1426");
+  assert.equal(loaded.manifest.copy.tagline, "深色沉稳，专业高效");
+  // thumbnail 是子目录自有文件（明暗封面不同），不回退
+  assert.ok(loaded.thumbnailPath.startsWith(join(themesRoot, "tdp-pro-dark")), `thumbnailPath 应在子目录：${loaded.thumbnailPath}`);
+  // 子目录只留 theme.json + thumbnail.webp
+  const files = await readdir(join(themesRoot, "tdp-pro-dark"));
+  assert.deepEqual(files.sort(), ["theme.json", "thumbnail.webp"]);
 });
 
 // 资产体积护栏：schema 只在 loadTheme 时校验引用到的素材，这里补一道全量扫描——
