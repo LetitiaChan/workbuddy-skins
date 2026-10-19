@@ -228,7 +228,7 @@ node src/cli.mjs apply --theme my-skin
 
 ### 🎭 纯 CSS 主题（定制主题）
 
-图片主题之外也支持整页定制 CSS 主题（如内置的 QQ 2008 / 腾讯云 TDP）：`theme.json` 用 `css` 字段替代 `hero`，CSS 即皮肤本体，不经过模板生成：
+图片主题之外也支持整页定制 CSS 主题（如内置的 QQ 2008 / 腾讯云 TDP）：`theme.json` 用 `css` 字段替代 `hero`，CSS 即皮肤本体，不经过模板生成。移植整套第三方皮肤时的 DOM 覆盖清单与踩坑记录见 [docs/full-page-port.md](docs/full-page-port.md)：
 
 ```json
 {
