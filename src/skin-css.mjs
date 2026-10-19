@@ -3,7 +3,7 @@
 // --cb-* 设计变量系统（60+ 个），override 它们即可全局换色；#root 作背景图层。
 // 不使用 CSS module 哈希类名（._grid_xxx），只用稳定锚点。
 
-import { DEFAULT_COLORS, HEX6 } from "./color.mjs";
+import { COLOR_KEYS, DEFAULT_COLORS, HEX6, hexToRgb } from "./color.mjs";
 
 // 严格 6 位 hex：所有调用点传的都是 normalizeColors 归一后的值或 6 位哨兵
 // （CSS_SENTINELS 的四色），原先放宽到 3–8 位的分支不可达，属伪装成灵活性的死代码。
@@ -511,7 +511,8 @@ ${buildTaglineCss(theme)}`;
 
 // 配色主题（group:"palette"，无图纯配色移植）：与图片主题共享 --cb-* 变量覆盖块与
 // 组件点缀块，区别在容器层——无 hero 底图，根层与各容器用表面色实底/浮层，
-// 各主题的视觉签名（主内容区渐变等）由主题目录 skin.css 装饰层叠加（注入器前置拼接本基座）
+// 各主题的视觉签名（主内容区渐变等）由 theme.json 的 signature 字段经
+// buildSignatureCss 渲染叠加（注入器前置拼接本基座）
 export function buildPaletteCss({ theme }) {
   const colors = {
     accent: color(theme.colors?.accent, DEFAULT_COLORS.accent),
@@ -592,5 +593,90 @@ ${buildVariableOverrides(colors)}
 }
 
 ${buildComponentAccents()}
+`;
+}
+
+// 配色主题签名装饰层（theme.json signature → CSS）：主内容区视觉签名（网格线 /
+// 渐变光斑 blob / 底层渐变）+ 侧边栏 accent 晕染。取代原先每主题一份的手写 skin.css。
+// 文本格式与迁移前的手写 skin.css 逐字节对齐（test/palette-signature.test.mjs 的
+// 快照钉住），以下约定不得擅动：
+//   - rgba 分量逗号后一空格；alpha 走 String(number) 原样输出（0.2 不补成 0.20）
+//   - base 渐变无 alpha 的 stop 输出小写 hex——存量文本是小写，与 normalizeColors
+//     的大写归一属有意背离，靠快照防漂移
+//   - 槽引用（accent/secondary/...）在注入期解为字面色值：产物自包含，不依赖 --wb-* 变量
+export function buildSignatureCss({ theme }) {
+  const signature = theme.signature;
+  if (signature === null || typeof signature !== "object") {
+    throw new Error("buildSignatureCss requires theme.signature");
+  }
+  const colors = {
+    accent: color(theme.colors?.accent, DEFAULT_COLORS.accent),
+    secondary: color(theme.colors?.secondary, DEFAULT_COLORS.secondary),
+    surface: color(theme.colors?.surface, DEFAULT_COLORS.surface),
+    text: color(theme.colors?.text, DEFAULT_COLORS.text),
+  };
+  const id = String(theme.id ?? "palette").replace(/[^a-z0-9_-]/gi, "");
+  const hexOf = (ref) => (COLOR_KEYS.includes(ref) ? colors[ref] : ref);
+  const rgbaOf = (ref, alpha) => {
+    const [r, g, b] = hexToRgb(hexOf(ref));
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
+  // 层序即 background-image 层序：网格两层（竖线、横线）最前，blob 按数组序，
+  // base 渐变垫底
+  const layers = [];
+  const sizes = [];
+  if (signature.grid) {
+    const { color: gridColor, alpha, line, size } = signature.grid;
+    layers.push(`linear-gradient(${rgbaOf(gridColor, alpha)} ${line}px, transparent ${line}px)`);
+    layers.push(`linear-gradient(90deg, ${rgbaOf(gridColor, alpha)} ${line}px, transparent ${line}px)`);
+    sizes.push(`${size}px ${size}px`, `${size}px ${size}px`);
+  }
+  for (const blob of signature.blobs ?? []) {
+    const shape = blob.shape ?? "circle";
+    if (shape === "star") {
+      // 硬停星点：实芯圆 0..size px，size+1 px 处陡切透明
+      layers.push(
+        `radial-gradient(circle at ${blob.x}% ${blob.y}%, ${rgbaOf(blob.color, blob.alpha)} 0 ${blob.size}px, transparent ${blob.size + 1}px)`,
+      );
+    } else {
+      layers.push(
+        `radial-gradient(${shape} at ${blob.x}% ${blob.y}%, ${rgbaOf(blob.color, blob.alpha)}, transparent ${blob.radius}%)`,
+      );
+    }
+    sizes.push("auto");
+  }
+  if (signature.base) {
+    const stops = signature.base.stops.map((stop) => {
+      const value = stop.alpha === undefined ? hexOf(stop.color).toLowerCase() : rgbaOf(stop.color, stop.alpha);
+      return stop.position === undefined ? value : `${value} ${stop.position}%`;
+    });
+    const angle = signature.base.angle === undefined ? "" : `${signature.base.angle}deg, `;
+    layers.push(`linear-gradient(${angle}${stops.join(", ")})`);
+    sizes.push("auto");
+  }
+
+  return `/*
+ * ${id} 装饰层：主内容区视觉签名 + 侧边栏主题晕染（配色移植自 workbuddy-skin-skill，
+ * MIT，作者 zhangxiaoqiang1991）。本层由 theme.json 的 signature 字段经
+ * buildSignatureCss 渲染生成——调参请改 theme.json，勿手改生成物。
+ */
+
+.teams-main-content,
+.main-content,
+.chat-container,
+.wb-home-route,
+[data-view-id=main-content] {
+  background-color: var(--wb-surface) !important;
+  background-image:
+    ${layers.join(",\n    ")} !important;
+${signature.grid ? `  background-size: ${sizes.join(", ")} !important;\n` : ""}}
+
+/* 侧边栏主题晕染：顶部 accent 色光 + 基座同款 surface/text 浮层 */
+[data-view-id=sidebar] {
+  background:
+    linear-gradient(180deg, ${rgbaOf("accent", 0.16)}, transparent 42%),
+    color-mix(in srgb, var(--wb-surface) 92%, var(--wb-text) 5%) !important;
+}
 `;
 }

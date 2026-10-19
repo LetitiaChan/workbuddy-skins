@@ -1,0 +1,17 @@
+.teams-main-content,
+.main-content,
+.chat-container,
+.wb-home-route,
+[data-view-id=main-content] {
+  background-color: var(--wb-surface) !important;
+  background-image:
+    radial-gradient(circle at 82% 12%, rgba(103, 232, 249, 0.22), transparent 40%),
+    radial-gradient(circle at 42% 88%, rgba(37, 99, 235, 0.32), transparent 46%) !important;
+}
+
+/* 侧边栏主题晕染：顶部 accent 色光 + 基座同款 surface/text 浮层 */
+[data-view-id=sidebar] {
+  background:
+    linear-gradient(180deg, rgba(103, 232, 249, 0.16), transparent 42%),
+    color-mix(in srgb, var(--wb-surface) 92%, var(--wb-text) 5%) !important;
+}

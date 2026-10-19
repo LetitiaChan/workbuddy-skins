@@ -2,10 +2,21 @@
   "schemaVersion": 1,
   "id": "warm-paper",
   "name": "Warm Paper · 暖纸墨色",
-  "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "order": -24,
   "group": "palette",
+  "signature": {
+    "blobs": [
+      { "color": "#D09062", "x": 84, "y": 14, "alpha": 0.42, "radius": 42 },
+      { "color": "accent", "x": 18, "y": 86, "alpha": 0.22, "radius": 40 }
+    ],
+    "base": {
+      "stops": [
+        { "color": "#FFFDF7", "alpha": 0.5 },
+        { "color": "surface", "alpha": 0.6 }
+      ]
+    }
+  },
   "colors": {
     "accent": "#B95F3D",
     "secondary": "#695B4D",

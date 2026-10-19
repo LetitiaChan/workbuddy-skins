@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildMascotCss, buildPaletteCss, buildSkinCss, buildTaglineCss } from "../src/skin-css.mjs";
+import { buildMascotCss, buildPaletteCss, buildSignatureCss, buildSkinCss, buildTaglineCss } from "../src/skin-css.mjs";
 
 const HERO = "data:image/webp;base64,aGVsbG8=";
 const baseTheme = {
@@ -247,6 +247,91 @@ test("配色主题基座：非法色值拒绝，id 消毒与图片主题同规�
   assert.throws(() => buildPaletteCss({ theme: { ...baseTheme, colors: { accent: "red" } } }), /无效主题颜色/);
   const css = buildPaletteCss({ theme: { ...baseTheme, id: "Focus Night!!" } });
   assert.ok(css.includes("WORKBUDDY_PALETTE:FocusNight"));
+});
+
+// ---- buildSignatureCss：palette 签名装饰层（theme.json signature → CSS）----
+// 文本格式与迁移前手写 skin.css 逐字节对齐（palette-signature.test.mjs 快照钉住），
+// 这里的字符串断言是格式约定的局部放大：rgba 逗号后一空格、alpha 不补零、base hex 小写
+
+test("签名装饰层：blob 渲染为 rgba（逗号空格风格），槽引用按 colors 解为字面色值", () => {
+  const css = buildSignatureCss({
+    theme: { ...baseTheme, signature: { blobs: [{ color: "#FF6B5F", shape: "circle", x: 78, y: 18, alpha: 0.42, radius: 34 }] } },
+  });
+  assert.ok(css.includes("radial-gradient(circle at 78% 18%, rgba(255, 107, 95, 0.42), transparent 34%)"));
+  // alpha 走 String(number)：0.2 不补成 0.20；槽引用解字面值（accent #5141F2）
+  const slot = buildSignatureCss({
+    theme: { ...baseTheme, signature: { blobs: [{ color: "accent", x: 1, y: 2, alpha: 0.2, radius: 3 }] } },
+  });
+  assert.ok(slot.includes("rgba(81, 65, 242, 0.2)"));
+});
+
+test("签名装饰层：ellipse / star 硬停 / grid 网格三种变体与层序", () => {
+  const ellipse = buildSignatureCss({
+    theme: { ...baseTheme, signature: { blobs: [{ color: "accent", shape: "ellipse", x: 42, y: 76, alpha: 0.48, radius: 50 }] } },
+  });
+  assert.ok(ellipse.includes("radial-gradient(ellipse at 42% 76%, rgba(81, 65, 242, 0.48), transparent 50%)"));
+  // star：实芯 0..size px，size+1 px 陡切透明（secondary #7C3AED）
+  const star = buildSignatureCss({
+    theme: { ...baseTheme, signature: { blobs: [{ color: "secondary", shape: "star", x: 15, y: 18, alpha: 0.22, size: 2 }] } },
+  });
+  assert.ok(star.includes("radial-gradient(circle at 15% 18%, rgba(124, 58, 237, 0.22) 0 2px, transparent 3px)"));
+  // grid 两层（竖线、横线）在 blobs 之前，background-size 钉网格周期、其余层补 auto
+  const grid = buildSignatureCss({
+    theme: {
+      ...baseTheme,
+      signature: {
+        grid: { color: "accent", alpha: 0.14, line: 2, size: 24 },
+        blobs: [{ color: "secondary", x: 82, y: 18, alpha: 0.34, radius: 38 }],
+      },
+    },
+  });
+  assert.ok(grid.includes(
+    "background-image:\n" +
+    "    linear-gradient(rgba(81, 65, 242, 0.14) 2px, transparent 2px),\n" +
+    "    linear-gradient(90deg, rgba(81, 65, 242, 0.14) 2px, transparent 2px),\n" +
+    "    radial-gradient(circle at 82% 18%, rgba(124, 58, 237, 0.34), transparent 38%) !important;\n" +
+    "  background-size: 24px 24px, 24px 24px, auto !important;",
+  ));
+});
+
+test("签名装饰层：base 渐变——无 alpha 输出小写 hex，有 alpha 输出 rgba，angle/position 可选", () => {
+  const css = buildSignatureCss({
+    theme: {
+      ...baseTheme,
+      signature: {
+        base: {
+          angle: 135,
+          stops: [
+            { color: "surface", position: 0 },
+            { color: "#0A1A2C", position: 55 },
+            { color: "surface", position: 100 },
+          ],
+        },
+      },
+    },
+  });
+  // 小写 hex 是对齐存量文本的有意背离（normalizeColors 归一大写），快照钉住
+  assert.ok(css.includes("linear-gradient(135deg, #f5f6f8 0%, #0a1a2c 55%, #f5f6f8 100%)"));
+  const noAngle = buildSignatureCss({
+    theme: { ...baseTheme, signature: { base: { stops: [{ color: "#FFFDF7", alpha: 0.5 }, { color: "surface", alpha: 0.6 }] } } },
+  });
+  assert.ok(noAngle.includes("linear-gradient(rgba(255, 253, 247, 0.5), rgba(245, 246, 248, 0.6))"));
+});
+
+test("签名装饰层：侧边栏晕染固化（accent 0.16 + 基座同款浮层），署名头含出处，缺 signature 拒绝", () => {
+  const css = buildSignatureCss({
+    theme: { ...baseTheme, signature: { blobs: [{ color: "accent", x: 82, y: 18, alpha: 0.42, radius: 38 }] } },
+  });
+  assert.ok(css.includes(
+    "[data-view-id=sidebar] {\n" +
+    "  background:\n" +
+    "    linear-gradient(180deg, rgba(81, 65, 242, 0.16), transparent 42%),\n" +
+    "    color-mix(in srgb, var(--wb-surface) 92%, var(--wb-text) 5%) !important;",
+  ));
+  assert.ok(css.startsWith("/*\n * demo 装饰层"));
+  assert.ok(css.includes("zhangxiaoqiang1991"), "署名头应保留移植出处");
+  // schema 层已保证 signature 存在；防御直接调用（与 color() 的防御风格一致）
+  assert.throws(() => buildSignatureCss({ theme: baseTheme }), /requires theme\.signature/);
 });
 
 test("成长伙伴形象替换：content:url 换图 + contain 入框 + 隐藏悬停动图，首页/会话页双槽位", () => {

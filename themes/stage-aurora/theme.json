@@ -2,10 +2,23 @@
   "schemaVersion": 1,
   "id": "stage-aurora",
   "name": "Stage Aurora · 舞台极光",
-  "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "order": -27,
   "group": "palette",
+  "signature": {
+    "blobs": [
+      { "color": "secondary", "shape": "ellipse", "x": 78, "y": 18, "alpha": 0.4, "radius": 40 },
+      { "color": "accent", "shape": "ellipse", "x": 42, "y": 76, "alpha": 0.48, "radius": 50 }
+    ],
+    "base": {
+      "angle": 145,
+      "stops": [
+        { "color": "surface" },
+        { "color": "#171034", "position": 58 },
+        { "color": "#091826" }
+      ]
+    }
+  },
   "colors": {
     "accent": "#8B5CF6",
     "secondary": "#4FF6D5",

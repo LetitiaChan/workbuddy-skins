@@ -272,8 +272,10 @@ renderer hint `renderer/index.html`. `npm test` should report all tests passing.
 - `src/skin-css.mjs` — `--cb-*` variable overrides + background + container transparency.
   Shared blocks: variable-override block and component accents are single-sourced for
   image themes (`buildSkinCss`) and pure-color palette themes (`buildPaletteCss` — solid
-  surfaces, no hero; the palette theme's own `skin.css` is a decoration layer with the
-  theme's signature gradients, appended after the generated base at apply time). Theme
+  surfaces, no hero; the palette theme's decoration layer — the theme's signature
+  gradients — is data-driven from `theme.json`'s `signature` field via
+  `buildSignatureCss`, appended after the generated base at apply time; a hand-written
+  `skin.css` decoration layer remains supported for backward compatibility). Theme
   switching is animated: the four `--wb-*` driver variables are `@property`-registered
   as `<color>` with a 450ms `transition` on body (every derived `--cb-*` and `var()`
   consumer re-evaluates per frame), and `#root` carries `isolation: isolate` so the

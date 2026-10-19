@@ -2,10 +2,23 @@
   "schemaVersion": 1,
   "id": "cyber-lobster",
   "name": "Cyber Lobster · 赛博龙虾",
-  "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "order": -29,
   "group": "palette",
+  "signature": {
+    "blobs": [
+      { "color": "accent", "x": 78, "y": 18, "alpha": 0.42, "radius": 34 },
+      { "color": "secondary", "x": 36, "y": 82, "alpha": 0.32, "radius": 42 }
+    ],
+    "base": {
+      "angle": 135,
+      "stops": [
+        { "color": "surface", "position": 0 },
+        { "color": "#0A1A2C", "position": 55 },
+        { "color": "surface", "position": 100 }
+      ]
+    }
+  },
   "colors": {
     "accent": "#FF6B5F",
     "secondary": "#2DD4BF",

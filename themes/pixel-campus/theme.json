@@ -2,10 +2,16 @@
   "schemaVersion": 1,
   "id": "pixel-campus",
   "name": "Pixel Campus · 像素校园",
-  "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "order": -21,
   "group": "palette",
+  "signature": {
+    "grid": { "color": "accent", "alpha": 0.14, "line": 2, "size": 24 },
+    "blobs": [
+      { "color": "secondary", "x": 82, "y": 18, "alpha": 0.34, "radius": 38 },
+      { "color": "accent", "x": 20, "y": 82, "alpha": 0.18, "radius": 36 }
+    ]
+  },
   "colors": {
     "accent": "#268BD2",
     "secondary": "#F3B61F",

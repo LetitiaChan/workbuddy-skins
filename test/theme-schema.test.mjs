@@ -244,6 +244,151 @@ test("group 分组：仅纯 CSS 主题可配置，取值限 custom/palette/scene
   }
 });
 
+test("signature 签名：palette 第三形态（无 css 无 hero）放行，与 css/hero 互斥", () => {
+  const signature = { blobs: [{ color: "accent", x: 82, y: 18, alpha: 0.42, radius: 38 }] };
+  const sigTheme = { schemaVersion: 1, id: "sig-theme", name: "Sig", group: "palette", signature };
+  const manifest = validateThemeManifest(sigTheme);
+  assert.equal(manifest.hero, null);
+  assert.equal(manifest.css, null);
+  assert.equal(manifest.group, "palette");
+  // 归一化：shape 缺省 circle，hex 色大写（与 normalizeColors 同规）
+  assert.deepEqual(manifest.signature.blobs[0], { color: "accent", shape: "circle", x: 82, y: 18, alpha: 0.42, radius: 38 });
+  assert.equal(
+    validateThemeManifest({ ...sigTheme, signature: { blobs: [{ color: "#5eead4", x: 40, y: 82, alpha: 0.2, radius: 42 }] } })
+      .signature.blobs[0].color,
+    "#5EEAD4",
+  );
+  // 无 css 无 hero 无 signature → 仍报 hero 必填（现有行为不破）
+  assert.throws(
+    () => validateThemeManifest({ schemaVersion: 1, id: "sig-theme", name: "Sig" }),
+    /theme hero must be/,
+  );
+  // 签名主题必须显式 group:"palette"：缺省/custom/scenery 均拒绝
+  assert.throws(
+    () => validateThemeManifest({ schemaVersion: 1, id: "sig-theme", name: "Sig", signature }),
+    /requires group "palette"/,
+  );
+  for (const group of ["custom", "scenery"]) {
+    assert.throws(
+      () => validateThemeManifest({ ...sigTheme, group }),
+      /requires group "palette"/,
+      `group=${group}`,
+    );
+  }
+  // 与 css / hero 互斥：同存时层叠语义含糊、图片主题不需要装饰层
+  assert.throws(
+    () => validateThemeManifest({ ...sigTheme, css: "skin.css" }),
+    /only valid without a css file/,
+  );
+  assert.throws(
+    () => validateThemeManifest({ ...sigTheme, hero: "hero.png" }),
+    /only valid without a hero/,
+  );
+  // 签名主题不开放伴随 js（normalizeJs 只认 css）
+  assert.throws(
+    () => validateThemeManifest({ ...sigTheme, js: "skin.js" }),
+    /only valid together with a css theme/,
+  );
+});
+
+test("signature 字段级校验：色槽/hex、alpha/百分位范围、shape 与 star 参数互斥、grid/base 边界", () => {
+  const base0 = { schemaVersion: 1, id: "sig-theme", name: "Sig", group: "palette" };
+  const blob = { color: "accent", x: 50, y: 50, alpha: 0.3, radius: 40 };
+  const sig = (over) => ({ blobs: [{ ...blob, ...over }] });
+  // color：色槽引用或 6 位 hex
+  for (const color of ["red", "#FFF", "brand", 1]) {
+    assert.throws(
+      () => validateThemeManifest({ ...base0, signature: sig({ color }) }),
+      /must be a palette slot/,
+      `color=${JSON.stringify(color)}`,
+    );
+  }
+  // alpha：(0,1] 裸 number
+  for (const alpha of [0, 1.5, "0.5", Number.NaN]) {
+    assert.throws(
+      () => validateThemeManifest({ ...base0, signature: sig({ alpha }) }),
+      /must be a number between 0 and 1/,
+      `alpha=${JSON.stringify(alpha)}`,
+    );
+  }
+  // x/y/radius：0–100
+  for (const x of [-1, 101]) {
+    assert.throws(
+      () => validateThemeManifest({ ...base0, signature: sig({ x }) }),
+      /must be a number between 0 and 100/,
+      `x=${x}`,
+    );
+  }
+  // shape 枚举与 star/circle 参数互斥
+  assert.throws(
+    () => validateThemeManifest({ ...base0, signature: sig({ shape: "blob" }) }),
+    /shape must be "circle", "ellipse", or "star"/,
+  );
+  assert.throws(
+    () => validateThemeManifest({ ...base0, signature: sig({ shape: "star", size: 2 }) }),
+    /radius is only valid for circle\/ellipse/,
+  );
+  assert.throws(
+    () => validateThemeManifest({ ...base0, signature: sig({ size: 2 }) }),
+    /size is only valid for star/,
+  );
+  // star 合法形态
+  assert.equal(
+    validateThemeManifest({ ...base0, signature: { blobs: [{ color: "secondary", shape: "star", x: 15, y: 18, alpha: 0.22, size: 2 }] } })
+      .signature.blobs[0].size,
+    2,
+  );
+  // grid：line 1–4、size 8–64 整数
+  const grid = { color: "accent", alpha: 0.14, line: 2, size: 24 };
+  assert.deepEqual(validateThemeManifest({ ...base0, signature: { grid } }).signature.grid, grid);
+  assert.throws(
+    () => validateThemeManifest({ ...base0, signature: { grid: { ...grid, line: 5 } } }),
+    /grid\.line must be an integer between 1 and 4/,
+  );
+  assert.throws(
+    () => validateThemeManifest({ ...base0, signature: { grid: { ...grid, size: 7 } } }),
+    /grid\.size must be an integer between 8 and 64/,
+  );
+  // base：stops 2–3 个，angle 0–360
+  const stops = [{ color: "surface" }, { color: "#0A1A2C" }];
+  assert.throws(
+    () => validateThemeManifest({ ...base0, signature: { base: { stops: [stops[0]] } } }),
+    /stops must be an array of 2 to 3 entries/,
+  );
+  assert.throws(
+    () => validateThemeManifest({ ...base0, signature: { base: { angle: 361, stops } } }),
+    /angle must be a number between 0 and 360/,
+  );
+  // 空 signature / 空 blobs 拒绝：至少一个装饰层
+  assert.throws(
+    () => validateThemeManifest({ ...base0, signature: {} }),
+    /requires at least one of grid, blobs, or base/,
+  );
+  assert.throws(
+    () => validateThemeManifest({ ...base0, signature: { blobs: [] } }),
+    /blobs must be an array of 1 to 4 entries/,
+  );
+});
+
+test("loadTheme：签名主题无 css/hero 路径，其余资源照常解析", async () => {
+  await withTempDir(async (dir) => {
+    await writeFile(
+      join(dir, "theme.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: "sig-theme",
+        name: "Sig",
+        group: "palette",
+        signature: { blobs: [{ color: "accent", x: 82, y: 18, alpha: 0.42, radius: 38 }] },
+      }),
+    );
+    const loaded = await loadTheme(dir);
+    assert.equal(loaded.cssPath, null);
+    assert.equal(loaded.heroPath, null);
+    assert.equal(loaded.manifest.signature.blobs[0].shape, "circle");
+  });
+});
+
 test("loadTheme：解析 jsPath，缺失时拒绝", async () => {
   await withTempDir(async (dir) => {
     await writeFile(join(dir, "skin.css"), "body { color: red; }");

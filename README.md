@@ -245,11 +245,31 @@ node src/cli.mjs apply --theme my-skin
 - CSS 中的 `url("./asset")` 相对引用（PNG/SVG/WebP 等图片）在注入时内联为 data URL，资源必须位于主题目录内；`data:`/绝对 URL 原样保留
 - `colors.accent`/`colors.surface` 仍必填语义不变：菜单圆点色、明暗模式钉住（CSS 内的 `body.dark` 作用域据此激活）
 - `order` 控制菜单排序（数值小者在前）；CSS 主题在菜单中按可选 `group` 字段分组：`"custom"`（默认，「定制主题」，整页风格移植如 QQ 2008 / TDP）、`"palette"`（「配色主题」，无图纯配色移植如内置 10 套 workbuddy-skin-skill 配色）或 `"scenery"`（「风景主题」，场景插画移植如内置 Aurora / Dream / Forest / Midnight / Paper / Sakura 六款）；图片/视频主题归入「图片主题」分组，不携带 `group` 字段
-- `"palette"` 主题的 `skin.css` 只是**装饰层**（主内容区签名渐变）：注入时由 `buildPaletteCss` 按 `colors` 四色生成换色基座（与图片主题同源的 `--cb-*` 变量覆盖 + 实底表面 + 组件点缀）前置拼接，装饰层叠在最后。这样移植来的配色走当前版本的设计变量系统全组件生效，不依赖移植源的旧版 DOM 类名
+- `"palette"` 主题注入时由 `buildPaletteCss` 按 `colors` 四色生成换色基座（与图片主题同源的 `--cb-*` 变量覆盖 + 实底表面 + 组件点缀）前置拼接，装饰层叠在最后。这样移植来的配色走当前版本的设计变量系统全组件生效，不依赖移植源的旧版 DOM 类名。装饰层推荐用 `signature` 字段数据化描述（见下）；手写 `skin.css` 形态保留向后兼容（两者互斥）
 - 可选 `thumbnail` 字段：「选择主题」弹窗卡片封面图（主题目录内的 PNG/JPEG/WebP/GIF/AVIF，≤512KB，建议 640×400 WebP）。纯 CSS 主题没有 hero，未配置时显示 accent→secondary 渐变色块；图片/视频主题也可配置，覆盖从 hero/poster 自动提取的封面。内置 QQ 2008 / TDP 两款的 `thumbnail.webp` 由吉祥物素材叠加主题渐变合成
 - 可选 `mascot` 字段：首页/会话页输入框上方「成长伙伴」机器人的主题替换形象（主题目录内的 PNG/JPEG/WebP/GIF/AVIF，≤256KB，建议 256×256 透明底 WebP；GIF/动态 WebP 保留动画）。任意类型主题均可配置；未配置的主题不输出替换规则，原生机器人原样保留。实现为纯 CSS（Chromium `img { content: url() }` 整体换图 + `object-fit: contain` 入框 + 隐藏原生悬停动图 video），作用于 `wb-home-route__growth-buddy` / `conversation-input__growth-buddy` 两个槽位，随主题切换自动生效/还原。可搭配 `mascotScale`（0.5~3，默认 1，以槽位底部居中为锚点缩放，形象从站立点向上放大）与 `mascotOffset`（`{"x":0,"y":0}`，单位 px，±80 内，正 x 向右、正 y 向下，缩放之后施加）微调显示——按形象主体在图内的包围盒调参，保证上半身露出、头顶与左右不被裁出 140px 槽位框；两者须与 `mascot` 同配，默认值时不输出 transform，与历史行为一致
 - 可选 `js` 字段（如 `"js": "skin.js"`）携带伴随脚本：主题激活时作为函数体执行（`new Function`），返回值若是函数则作为拆除回调，在切换主题/恢复原生/暂停注入时调用；js 内的 `"./asset"` 相对资源引用（图片/音频/视频）同样内联为 data URL。用于 CSS 做不到的 DOM 注入与交互行为——TDP 主题主界面的宇航员动效层、QQ 2008 的音效（消息/失败/敲门，复用旧项目的 `WORKBUDDY_THEME_SOUND_ENABLED`/`VOLUME` 设置键，1200ms 节流）与企鹅挂件均由此实现。页面 CSP 禁 eval 时降级为警告，CSS 皮肤本体不受影响
 - 可选 `dynamicMode` 字段（布尔，须与 `js` 同配）：声明后菜单**不钉住**明暗模式（`applyMode` 跳过 pin），明暗写入权交给伴随 js——用于按时间等外部条件动态切换深浅的定制主题（如 Sky Clock 按天空亮度全天联动 `data-vscode-theme-kind` 与六个模式类名，写法和菜单 `writeMode` 同构）。普通主题不要开启：缺少钉住会让界面跟随应用默认模式
+
+### ✍️ 配色主题签名（signature）
+
+`group: "palette"` 主题的装饰层可以不带 `css`/`hero` 文件，改用 `signature` 字段数据化描述（内置 10 套 workbuddy-skin-skill 配色均为这种形态），由 `buildSignatureCss` 渲染为主内容区视觉签名 + 侧边栏 accent 晕染：
+
+```json
+{
+  "group": "palette",
+  "signature": {
+    "grid":  { "color": "accent", "alpha": 0.14, "line": 2, "size": 24 },
+    "blobs": [ { "color": "secondary", "shape": "circle", "x": 82, "y": 18, "alpha": 0.34, "radius": 38 } ],
+    "base":  { "angle": 145, "stops": [ { "color": "surface" }, { "color": "#171034", "position": 58 } ] }
+  }
+}
+```
+
+- `grid`（像素网格线，`line`=线宽 px / `size`=周期 px）、`blobs`（渐变光斑，1–4 个）、`base`（底层线性渐变，`stops` 2–3 个）三者至少配置一个
+- `color` 取色槽引用（`"accent"`/`"secondary"`/`"surface"`/`"text"`）或 6 位 hex；`x`/`y`/`radius`/`position` 为 0–100 百分位裸数值；`alpha` 为 (0,1]
+- `blobs` 的 `shape`：`"circle"`（默认）/`"ellipse"`/`"star"`（硬停星点，用 `size`（px）替代 `radius`）
+- `signature` 与 `css`/`hero` 互斥，且不开放伴随 `js`；层序固定为 网格 → blobs → base，侧边栏晕染（accent 16% + 表面浮层）由渲染器固化
 
 ## ⌨️ 命令行
 

@@ -2,10 +2,22 @@
   "schemaVersion": 1,
   "id": "silver-idol",
   "name": "Silver Idol · 银白偶像",
-  "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "order": -22,
   "group": "palette",
+  "signature": {
+    "blobs": [
+      { "color": "accent", "x": 82, "y": 18, "alpha": 0.42, "radius": 38 },
+      { "color": "secondary", "x": 36, "y": 80, "alpha": 0.36, "radius": 44 }
+    ],
+    "base": {
+      "angle": 145,
+      "stops": [
+        { "color": "#F8F9FC" },
+        { "color": "#E8EAF3" }
+      ]
+    }
+  },
   "colors": {
     "accent": "#8B7BE8",
     "secondary": "#6E7EA8",

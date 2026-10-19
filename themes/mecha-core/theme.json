@@ -2,10 +2,16 @@
   "schemaVersion": 1,
   "id": "mecha-core",
   "name": "Mecha Core · 机械核心",
-  "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "order": -28,
   "group": "palette",
+  "signature": {
+    "grid": { "color": "secondary", "alpha": 0.13, "line": 1, "size": 36 },
+    "blobs": [
+      { "color": "accent", "x": 82, "y": 18, "alpha": 0.38, "radius": 38 },
+      { "color": "secondary", "x": 30, "y": 85, "alpha": 0.2, "radius": 38 }
+    ]
+  },
   "colors": {
     "accent": "#FF9134",
     "secondary": "#3DD6D0",

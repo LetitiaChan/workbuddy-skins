@@ -403,6 +403,48 @@ test("applySkin：CSS 主题 manifest.group 为 palette 时前置拼接换色基
   });
 });
 
+test("applySkin：签名配色主题（signature，无 css 无 hero）基座+装饰层全由数据渲染", async () => {
+  await withTempDir(async (dir) => {
+    // 第三形态：cssPath/heroPath 均为 null，装饰层由 buildSignatureCss 按 signature 渲染
+    const sigTheme = {
+      manifest: {
+        id: "focus-night",
+        name: "Focus Night",
+        group: "palette",
+        colors: { accent: "#67E8F9", secondary: "#2563EB", surface: "#090D13", text: "#EDF4FF" },
+        copy: { tagline: "夜色专注，心无旁骛" },
+        signature: { blobs: [{ color: "accent", shape: "circle", x: 82, y: 12, alpha: 0.22, radius: 40 }] },
+      },
+      cssPath: null,
+      root: dir,
+      heroPath: null,
+      posterPath: null,
+    };
+    const { Session, sessions } = sessionFactory();
+    const result = await applySkin({
+      loadedTheme: sigTheme,
+      themes: [sigTheme],
+      port: 9223,
+      deps: { Session, waitForRendererTargets: async () => [target("t1")] },
+    });
+    assert.equal(result.applied, 1);
+    const expression = sessions[0].lastCall();
+    assert.ok(expression.includes('"group":"palette"'), "palette 分组应透传进菜单脚本");
+    // 基座在前、签名装饰层在后（后者依赖前者的 --wb-surface 与覆盖顺序）
+    const baseAt = expression.indexOf("WORKBUDDY_PALETTE:focus-night");
+    const signatureAt = expression.indexOf("[data-view-id=main-content]");
+    assert.ok(baseAt >= 0, "注入 CSS 应含生成的配色基座");
+    assert.ok(signatureAt > baseAt, "签名装饰层应拼在基座之后");
+    // 装饰层内容：槽引用解为字面值（accent #67E8F9 → 103,232,249）
+    assert.ok(expression.includes("radial-gradient(circle at 82% 12%, rgba(103, 232, 249, 0.22), transparent 40%)"));
+    // 侧边栏晕染随装饰层一起渲染
+    assert.ok(expression.includes("[data-view-id=sidebar]"));
+    // tagline 直接追加（生成物不可能自带 ::after，无需跳过检测）
+    assert.ok(expression.includes(".wb-home-header::after"), "tagline 标语应追加");
+    // 无 heroPath 也不掉进 hero 分支报错
+  });
+});
+
 test("applySkin：CSS 主题配置 copy.tagline 时追加自包含标语块（var 回退字面色值）", async () => {
   await withTempDir(async (dir) => {
     await writeFile(join(dir, "skin.css"), ".wb-home-route { background: red; }");

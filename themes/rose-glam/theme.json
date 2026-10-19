@@ -2,10 +2,23 @@
   "schemaVersion": 1,
   "id": "rose-glam",
   "name": "Rose Glam · 玫瑰红毯",
-  "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "order": -25,
   "group": "palette",
+  "signature": {
+    "blobs": [
+      { "color": "accent", "x": 82, "y": 20, "alpha": 0.45, "radius": 38 },
+      { "color": "secondary", "x": 38, "y": 84, "alpha": 0.28, "radius": 44 }
+    ],
+    "base": {
+      "angle": 140,
+      "stops": [
+        { "color": "surface" },
+        { "color": "#3B1023", "position": 56 },
+        { "color": "#210811" }
+      ]
+    }
+  },
   "colors": {
     "accent": "#FF5C8A",
     "secondary": "#F7CB86",

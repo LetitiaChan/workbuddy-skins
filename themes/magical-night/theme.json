@@ -2,10 +2,23 @@
   "schemaVersion": 1,
   "id": "magical-night",
   "name": "Magical Night · 魔法星夜",
-  "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "order": -26,
   "group": "palette",
+  "signature": {
+    "blobs": [
+      { "color": "secondary", "shape": "star", "x": 15, "y": 18, "alpha": 0.22, "size": 2 },
+      { "color": "accent", "x": 83, "y": 22, "alpha": 0.44, "radius": 40 },
+      { "color": "#5EEAD4", "x": 40, "y": 82, "alpha": 0.2, "radius": 42 }
+    ],
+    "base": {
+      "angle": 145,
+      "stops": [
+        { "color": "surface" },
+        { "color": "#211248" }
+      ]
+    }
+  },
   "colors": {
     "accent": "#C084FC",
     "secondary": "#FBD36D",

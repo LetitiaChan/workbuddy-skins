@@ -2,10 +2,22 @@
   "schemaVersion": 1,
   "id": "sakura-dream",
   "name": "Sakura Dream · 樱粉梦境",
-  "css": "skin.css",
   "thumbnail": "thumbnail.webp",
   "order": -23,
   "group": "palette",
+  "signature": {
+    "blobs": [
+      { "color": "accent", "x": 80, "y": 18, "alpha": 0.4, "radius": 40 },
+      { "color": "secondary", "x": 34, "y": 80, "alpha": 0.36, "radius": 46 }
+    ],
+    "base": {
+      "angle": 145,
+      "stops": [
+        { "color": "#FFF8FB" },
+        { "color": "#FBEAF4" }
+      ]
+    }
+  },
   "colors": {
     "accent": "#E66FA5",
     "secondary": "#A783DF",

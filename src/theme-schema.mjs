@@ -57,10 +57,11 @@ function normalizeMediaPath(value, label, extensions, types) {
   return value;
 }
 
-function normalizeHero(hero, hasCss) {
-  // 纯 CSS 主题（定制主题移植）无 hero 底图；无 css 时 hero 必填
+function normalizeHero(hero, allowsNoHero) {
+  // 纯 CSS 主题（定制主题移植）与签名配色主题（signature）无 hero 底图；
+  // 两者皆无时 hero 必填
   if (hero === undefined || hero === null) {
-    if (hasCss) return null;
+    if (allowsNoHero) return null;
     throw new Error("theme hero must be a relative path inside the theme directory");
   }
   return normalizeMediaPath(hero, "hero", HERO_EXTENSIONS, "PNG, JPEG, WebP, GIF, AVIF, or MP4");
@@ -79,17 +80,22 @@ function normalizeJs(js, hasCss) {
   return normalizeMediaPath(js, "js", new Set([".js"]), "a JS file");
 }
 
-// 弹窗分组：仅对纯 CSS 主题有意义。custom=定制主题（默认，如 TDP/QQ2008 整页移植），
-// palette=配色主题（无图纯配色移植，如 workbuddy-skin-skill 的 10 套配色）；
+// 弹窗分组：仅对纯 CSS 主题与签名配色主题有意义。custom=定制主题（默认，如 TDP/QQ2008
+// 整页移植），palette=配色主题（无图纯配色移植，如 workbuddy-skin-skill 的 10 套配色）；
 // 图片/视频主题不提供此字段（注入侧固定归 image 组）
 const THEME_GROUPS = new Set(["custom", "palette", "scenery"]);
 
-function normalizeGroup(group, hasCss) {
-  if (group === undefined || group === null) return hasCss ? "custom" : null;
-  if (!hasCss) throw new Error("theme group is only valid together with a css theme");
+function normalizeGroup(group, hasCss, hasSignature = false) {
+  if (group === undefined || group === null) {
+    // 签名主题必须显式声明 palette：缺省回退 custom 会让它混进定制主题分区
+    if (hasSignature) throw new Error('theme signature requires group "palette"');
+    return hasCss ? "custom" : null;
+  }
+  if (!hasCss && !hasSignature) throw new Error("theme group is only valid together with a css theme");
   if (typeof group !== "string" || !THEME_GROUPS.has(group)) {
     throw new Error('theme group must be "custom", "palette", or "scenery"');
   }
+  if (hasSignature && group !== "palette") throw new Error('theme signature requires group "palette"');
   return group;
 }
 
@@ -177,6 +183,122 @@ function normalizeCopy(copy) {
   );
 }
 
+// ---- signature：配色主题（group:"palette"）的视觉签名数据 ----
+// 「无 css 无 hero」第三形态的装饰层描述：主内容区的网格线/渐变光斑/底层渐变 +
+// 侧边栏晕染，由 buildSignatureCss 渲染为 CSS。取代原先每主题一份的手写 skin.css
+// （10 份骨架逐字节一致、只有参数不同，2026-10-07 增强那轮各自手写已现措辞分叉）。
+// 与 css/hero 互斥；渲染产物与历史 skin.css 逐字节一致（palette-signature 快照钉住）
+
+const SIGNATURE_SHAPES = new Set(["circle", "ellipse", "star"]);
+
+// 色槽引用（accent/secondary/surface/text）或 6 位 hex；hex 归一大写，与 normalizeColors 同规
+function normalizeSignatureColor(value, label) {
+  if (COLOR_KEYS.includes(value)) return value;
+  if (typeof value === "string" && HEX_COLOR.test(value)) return value.toUpperCase();
+  throw new Error(`${label} must be a palette slot (accent, secondary, surface, text) or a six-digit hex color`);
+}
+
+function normalizeSignatureAlpha(value, label) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1) {
+    throw new Error(`${label} must be a number between 0 and 1`);
+  }
+  return value;
+}
+
+// 百分位数值（x/y/radius/position），0–100 裸 number（不带 % 单位）
+function normalizeSignaturePercent(value, label) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) {
+    throw new Error(`${label} must be a number between 0 and 100`);
+  }
+  return value;
+}
+
+function normalizeSignatureInt(value, label, min, max) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${label} must be an integer between ${min} and ${max}`);
+  }
+  return value;
+}
+
+function normalizeSignatureBlob(blob, label) {
+  if (!isRecord(blob)) throw new Error(`${label} must be an object`);
+  const shape = blob.shape ?? "circle";
+  if (!SIGNATURE_SHAPES.has(shape)) {
+    throw new Error(`${label}.shape must be "circle", "ellipse", or "star"`);
+  }
+  const result = {
+    color: normalizeSignatureColor(blob.color, `${label}.color`),
+    shape,
+    x: normalizeSignaturePercent(blob.x, `${label}.x`),
+    y: normalizeSignaturePercent(blob.y, `${label}.y`),
+    alpha: normalizeSignatureAlpha(blob.alpha, `${label}.alpha`),
+  };
+  // star 是硬停星点（实芯 size px、size+1 px 陡切透明），与渐变半径互斥
+  if (shape === "star") {
+    if (blob.radius !== undefined) throw new Error(`${label}.radius is only valid for circle/ellipse blobs`);
+    result.size = normalizeSignatureInt(blob.size, `${label}.size`, 1, 4);
+  } else {
+    if (blob.size !== undefined) throw new Error(`${label}.size is only valid for star blobs`);
+    result.radius = normalizeSignaturePercent(blob.radius, `${label}.radius`);
+  }
+  return result;
+}
+
+function normalizeSignatureGrid(grid) {
+  if (!isRecord(grid)) throw new Error("signature.grid must be an object");
+  return {
+    color: normalizeSignatureColor(grid.color, "signature.grid.color"),
+    alpha: normalizeSignatureAlpha(grid.alpha, "signature.grid.alpha"),
+    line: normalizeSignatureInt(grid.line, "signature.grid.line", 1, 4),
+    size: normalizeSignatureInt(grid.size, "signature.grid.size", 8, 64),
+  };
+}
+
+function normalizeSignatureBase(base) {
+  if (!isRecord(base)) throw new Error("signature.base must be an object");
+  if (
+    base.angle !== undefined &&
+    (typeof base.angle !== "number" || !Number.isFinite(base.angle) || base.angle < 0 || base.angle > 360)
+  ) {
+    throw new Error("signature.base.angle must be a number between 0 and 360");
+  }
+  if (!Array.isArray(base.stops) || base.stops.length < 2 || base.stops.length > 3) {
+    throw new Error("signature.base.stops must be an array of 2 to 3 entries");
+  }
+  const stops = base.stops.map((stop, index) => {
+    const label = `signature.base.stops[${index}]`;
+    if (!isRecord(stop)) throw new Error(`${label} must be an object`);
+    const result = { color: normalizeSignatureColor(stop.color, `${label}.color`) };
+    if (stop.alpha !== undefined) result.alpha = normalizeSignatureAlpha(stop.alpha, `${label}.alpha`);
+    if (stop.position !== undefined) result.position = normalizeSignaturePercent(stop.position, `${label}.position`);
+    return result;
+  });
+  return { ...(base.angle !== undefined ? { angle: base.angle } : {}), stops };
+}
+
+function normalizeSignature(signature) {
+  if (signature === undefined || signature === null) return null;
+  if (!isRecord(signature)) throw new Error("theme signature must be an object");
+  const result = {
+    ...(signature.grid !== undefined ? { grid: normalizeSignatureGrid(signature.grid) } : {}),
+    ...(signature.blobs !== undefined
+      ? {
+          blobs: (() => {
+            if (!Array.isArray(signature.blobs) || signature.blobs.length < 1 || signature.blobs.length > 4) {
+              throw new Error("signature.blobs must be an array of 1 to 4 entries");
+            }
+            return signature.blobs.map((blob, index) => normalizeSignatureBlob(blob, `signature.blobs[${index}]`));
+          })(),
+        }
+      : {}),
+    ...(signature.base !== undefined ? { base: normalizeSignatureBase(signature.base) } : {}),
+  };
+  if (!result.grid && !result.blobs && !result.base) {
+    throw new Error("theme signature requires at least one of grid, blobs, or base");
+  }
+  return result;
+}
+
 // dynamicMode：明暗模式不由菜单钉住，交给主题 js 按时间等外部条件动态改写
 // （如 sky-clock 的天空时刻配色）。必须伴随 js——没有 js 就没有人接管明暗写入
 function normalizeDynamicMode(dynamicMode, js) {
@@ -205,7 +327,16 @@ export function validateThemeManifest(input) {
   }
 
   const css = normalizeCss(input.css);
-  const hero = normalizeHero(input.hero, css !== null);
+  const signature = normalizeSignature(input.signature);
+  // signature 与 css/hero 互斥：它是「无 css 无 hero」第三形态的装饰层数据——
+  // 与手写 skin.css 同存时层叠语义含糊（谁在后？），图片主题则不需要装饰层
+  if (signature !== null && css !== null) {
+    throw new Error("theme signature is only valid without a css file");
+  }
+  if (signature !== null && input.hero !== undefined && input.hero !== null) {
+    throw new Error("theme signature is only valid without a hero");
+  }
+  const hero = normalizeHero(input.hero, css !== null || signature !== null);
   if (hero === null && input.poster !== undefined) {
     throw new Error("theme poster requires a video hero");
   }
@@ -219,7 +350,8 @@ export function validateThemeManifest(input) {
     css,
     js: normalizeJs(input.js, css !== null),
     dynamicMode: normalizeDynamicMode(input.dynamicMode, input.js),
-    group: normalizeGroup(input.group, css !== null),
+    group: normalizeGroup(input.group, css !== null, signature !== null),
+    signature,
     thumbnail: normalizeThumbnail(input.thumbnail),
     mascot,
     mascotScale: normalizeMascotScale(input.mascotScale, mascot),

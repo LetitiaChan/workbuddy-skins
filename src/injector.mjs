@@ -13,7 +13,7 @@ import {
   withSession,
 } from "./renderer-session.mjs";
 import { BASE64_DECODE_SNIPPET, IDB_OPEN_SNIPPET, VIDEO_DB_LITERALS } from "./renderer-snippets.mjs";
-import { buildMascotCss, buildPaletteCss, buildSkinCss, buildTaglineCss } from "./skin-css.mjs";
+import { buildMascotCss, buildPaletteCss, buildSignatureCss, buildSkinCss, buildTaglineCss } from "./skin-css.mjs";
 import { buildSkinMenuScript, CSS_SENTINELS, TEARDOWN_GLOBAL, VIDEO_LAYER_CSS } from "./skin-menu.mjs";
 import { isInsideDir } from "./theme-schema.mjs";
 import { probeAnimatedSize } from "./media-probe.mjs";
@@ -119,7 +119,9 @@ async function themeEntryBody(loadedTheme) {
   // （--cb-* 变量覆盖 + 实底表面 + 组件点缀）由 buildPaletteCss 按 theme.json colors
   // 生成并前置拼接——移植源（workbuddy-skin-skill）的 CSS 面向旧版本 DOM 类名
   // （.cb-assistant-message/.wb-home-composer 等已更名），直注会大面积失配，
-  // 基座走当前版本的变量系统才能保证全组件一致取色
+  // 基座走当前版本的变量系统才能保证全组件一致取色。
+  // 10 个内置 palette 主题的装饰层已数据化为 theme.json 的 signature 字段
+  // （走下方 signature 分支）；本 cssPath 分支保留给手写 CSS 形态的 palette 主题
   if (loadedTheme.cssPath) {
     const rawCss = await inlineCssAssets(await readFile(loadedTheme.cssPath, "utf8"), loadedTheme.root, loadedTheme.manifest.id);
     let css = loadedTheme.manifest.group === "palette"
@@ -147,6 +149,26 @@ async function themeEntryBody(loadedTheme) {
       // dynamicMode：明暗不钉住，由伴随 js 动态改写（菜单侧据此跳过 applyMode 钉住）
       ...(loadedTheme.manifest.dynamicMode ? { dynamicMode: true } : {}),
       ...(js ? { js } : {}),
+    };
+  }
+  // 签名配色主题（group:"palette" + signature，无 css 无 hero 的第三形态）：
+  // 换色基座与签名装饰层全部由 theme.json 数据渲染，无文件可读可内联
+  if (loadedTheme.manifest.signature) {
+    let css = buildPaletteCss({ theme: loadedTheme.manifest })
+      + "\n" + buildSignatureCss({ theme: loadedTheme.manifest });
+    // 生成物不可能自带 .wb-home-header::after，无需 cssPath 分支的跳过检测
+    if (loadedTheme.manifest.copy?.tagline) {
+      css = css + "\n" + buildTaglineCss(loadedTheme.manifest);
+    }
+    return {
+      id: loadedTheme.manifest.id,
+      name: loadedTheme.manifest.name,
+      accent: loadedTheme.manifest.colors?.accent,
+      secondary: loadedTheme.manifest.colors?.secondary,
+      surface: loadedTheme.manifest.colors?.surface,
+      text: loadedTheme.manifest.colors?.text,
+      css,
+      group: loadedTheme.manifest.group ?? "palette",
     };
   }
   const extension = extname(loadedTheme.heroPath).toLowerCase();
