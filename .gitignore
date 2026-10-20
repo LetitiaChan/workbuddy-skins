@@ -7,6 +7,8 @@ node_modules/
 
 # 打包产物（zip / 导出页面等）
 /outputs/
+# 活体探针脚本与截帧（本地排查用，不入库）
+/output/
 
 # 临时调试脚本（本地排查用，不入库）
 /test/debug-*.mjs

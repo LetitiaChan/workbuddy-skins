@@ -330,9 +330,14 @@ renderer hint `renderer/index.html`. `npm test` should report all tests passing.
 - `scripts/svg-anim-probe.mjs` + `scripts/svg-anim-sample.py` — 通用 SMIL 动效离线验证：
   把含 SMIL/CSS 动画的 SVG 喂进来，按给定采样点在不同虚拟时刻用无头 Edge 截多帧，
   Pillow 逐点测峰值亮度增量 Δ 与亮像素面积，输出时序判定动画是否在 CSS
-  background-image（data URL）下运行、相位是否错开、反差是否够。配合
-  `scripts/export-skyclock-svg.mjs`（用 DOM 桩跑真实 skin.js 导出场景 SVG）组成完整
-  「素材 → SVG → 验证」链路；需 Edge/Chrome + 带 Pillow 的 Python。
+  background-image（data URL）下运行、相位是否错开、反差是否够。需 Edge/Chrome +
+  带 Pillow 的 Python。
+  **结论不可迁移到 WorkBuddy**：Electron 37 / Chromium 138 的渲染进程把 SMIL 整类
+  冻结（inline 与 background-image 都停在 t=0），无头 Edge 里却正常。应用内动效
+  必须走活体 CDP 截屏差分（`output/cloud-probe/live-*.mjs` 系列）；本工具只用于
+  验证 SVG 素材本身。
+  `scripts/export-skyclock-svg.mjs` 复用 skin.js 的纯函数段导出「当前时刻」场景 SVG
+  （带 class + `--dur/--delay` 动画标记），供素材检查与录屏对照。
 - `README.md` — full human-readable documentation.
 
 ## One-line summary for the user

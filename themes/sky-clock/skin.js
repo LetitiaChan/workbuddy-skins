@@ -1,6 +1,7 @@
 /* Sky Clock · 四时天空 —— 主题伴随脚本（new Function 函数体，返回拆除回调）。
-   职责：按真实时间插值「天空时刻表」，每 30s（墙钟半分钟对齐）重建一次场景 SVG，
-   预解码后单帧换图写入 body::before，同步改写 skin.css 引用的 --sky-* 变量
+   职责：按真实时间插值「天空时刻表」，每 30s（墙钟半分钟对齐）重建一次场景，
+   签名门控后写入内联 <svg class="sky-art">（云漂移/星闪由 CSS keyframes 驱动；
+   WorkBuddy 渲染进程冻结 SMIL，故不使用 SMIL），同步改写 skin.css 引用的 --sky-* 变量
    与界面明暗模式（明暗翻转走 0.20–0.40 亮度过渡带 + 迟滞，在带中央一次切换）。
    带内只有主题自有的半透明浮层色（--sky-panel/border/shadow/art-opacity）连续插值；
    原生实底表面令牌一律「档内着色」，不做跨档插值——跨档插值会放大令牌间的明度
@@ -41,21 +42,6 @@ const STARS = [
   [180, 160, 3], [420, 245, 2], [730, 125, 3, "#A9C7FF"], [1260, 175, 2],
   [1430, 295, 3, "#D6E4FF"], [950, 90, 2], [560, 330, 2], [1100, 260, 2],
 ];
-
-// ---------- 环境探测 ----------
-// 系统偏好「减弱动效」时不输出云漂移与星闪的 SMIL 节点（云/星静态保留，天色/日月照常流转）。
-// typeof window 短路 + try/catch 双保险：Node 端跑测试（新 Function/lib eval）时
-// window 未定义，裸调 window.matchMedia 会抛 ReferenceError；旧环境或 matchMedia
-// 被劫持时同样兜底为「不降级」。写法与菜单的 reducedMotion（skin-menu.mjs）一致。
-const reducedMotion = () => {
-  try {
-    return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  } catch {
-    return false;
-  }
-};
-// 顶部只探一次（该偏好整场会话基本不变）：命中时 buildSvg 不输出云漂移与星闪 SMIL
-const reduceMotion = reducedMotion();
 
 // ---------- 颜色工具 ----------
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -144,35 +130,32 @@ const CLOUDS = [
 const CLOUD_BLOBS = [
   [0, 15, 68, 18, 0], [0, 0, 58, 26, 1], [-52, 10, 40, 20, 1], [55, 12, 44, 21, 1],
 ];
-// 微动：每簇云缓慢漂移（SMIL，背景图内仍生效），周期长、幅度小、速度错开，
-// 近似积云随风缓移；[x 往返幅度, y 沉浮分量, 周期 s, 相位偏移 s]——y 给云加 3–5px
-// 轻微「浮沉」，漂移不再是贴纸平移。
-// begin 锁定墙钟相位（-(epoch+dur-offset) % dur）：每 30s 重建 SVG 时 SMIL 时间线虽重启，
-// 但相位由当前时间推出，位置在重建前后严格连续，不会出现跳变/闪回。
+// 微动：每簇云缓慢漂移（CSS keyframes，见 skin.css「场景动效」段）。
+// WorkBuddy 的渲染进程把 SMIL 整类冻结（Electron 37 / Chromium 138，inline 与
+// background-image 里的 SMIL 都停在 t=0），动效必须走 CSS 动画；场景同时从
+// background-image 改为内联 <svg>，否则主题样式表选不中场景里的元素。
+// [x 往返幅度, y 沉浮分量, 周期 s, 相位偏移 s]——y 给云加 3–5px 轻微「浮沉」，
+// 漂移不再是贴纸平移。
+// 负 animation-delay 锁定墙钟相位（-(epoch+offset) % dur）：每次重建 SVG 时动画
+// 随元素重建而重启，但负延迟把播放位置直接推到当前相位，重建前后严格连续。
+// --delay 是唯一随时间变化的字段，artSignature 会抹掉它，签名门控才不会被每 tick
+// 的相位值击穿。
 const CLOUD_DRIFT = [[36, 4, 75, 0], [-30, -3, 95, -30], [26, 3, 115, -70]];
-const cloudDriftAnim = (i) => {
-  if (reduceMotion) return ""; // 减弱动效：云层静态保留，不输出漂移 SMIL
-  const [amp, y, dur, phase] = CLOUD_DRIFT[i % CLOUD_DRIFT.length];
-  const begin = -(((Date.now() / 1000 + phase) % dur + dur) % dur);
-  // keySplines 非对称：去程更慢（0.3 0 0.7 1，峰值速度低）、回程略快（0.42 0 1 1，
-  // ease-in 加速推回），模拟阵风而非机械往返
-  return '<animateTransform attributeName="transform" type="translate" values="0 0; ' + amp +
-    ' ' + y + '; 0 0" keyTimes="0; 0.5; 1" calcMode="spline" keySplines="0.3 0 0.7 1; 0.42 0 1 1" dur="' +
-    dur + 's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/>';
-};
-// 簇内差异微动：真实积云边飘边鼓，单个 blob 在整簇漂移之上叠加 additive="sum" 的
-// 微小 bob（幅度 1–2px，各 blob 周期/相位错开），让云在漂移中缓慢变形而非刚体平移。
-// [x 幅度, y 幅度, 周期 s]；相位由簇序 ci 与 blob 序 bi 共同错开。
-// begin 同漂移一样锁定墙钟相位，30s 重建 SVG 时位置严格连续
 const CLOUD_BLOB_BOB = [[1.6, 1.2, 13], [1.2, 1.8, 17], [2, 1.4, 11], [1.4, 2, 19]];
-const cloudBlobBob = (ci, bi) => {
-  if (reduceMotion) return ""; // 减弱动效：不输出 blob 微动 SMIL
+const phaseDelay = (dur, offset) => -(((Date.now() / 1000 + offset) % dur + dur) % dur);
+// 漂移/微动参数以 CSS 自定义属性下发，style 统一以 --delay 收尾（签名剥离锚点）
+const driftAttrs = (i) => {
+  const [amp, y, dur, phase] = CLOUD_DRIFT[i % CLOUD_DRIFT.length];
+  return 'class="sky-cloud-drift" style="--dx:' + amp + 'px;--dy:' + y + 'px;--dur:' + dur +
+    's;--delay:' + phaseDelay(dur, phase).toFixed(1) + 's"';
+};
+// 簇内差异微动：真实积云边飘边鼓，单个 blob 在整簇漂移之上再做一个微小 bob
+// （幅度 1–2px，各 blob 周期/相位错开），让云在漂移中缓慢变形而非刚体平移。
+const blobAttrs = (ci, bi) => {
   const [ax, ay, dur] = CLOUD_BLOB_BOB[bi % CLOUD_BLOB_BOB.length];
   const phase = ci * 5.3 + bi * 2.7; // 簇间/簇内相位错开，避免三簇同步呼吸
-  const begin = -(((Date.now() / 1000 + phase) % dur + dur) % dur);
-  return '<animateTransform attributeName="transform" type="translate" additive="sum" values="0 0; ' +
-    ax + ' ' + ay + '; 0 0" keyTimes="0; 0.5; 1" calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1" dur="' +
-    dur + 's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/>';
+  return 'class="sky-cloud-bob" style="--bx:' + ax + 'px;--by:' + ay + 'px;--dur:' + dur +
+    's;--delay:' + phaseDelay(dur, phase).toFixed(1) + 's"';
 };
 const cloudState = (h) => {
   const strength = gauss(h, 12.5, 2.6);
@@ -208,22 +191,22 @@ const moonLitPath = (cx, cy, r, p) => {
 };
 
 // ---------- 场景 SVG 重建（phase 为 moonPhase 结果） ----------
-const buildSvg = (h, sky, phase) => {
+const buildScene = (h, sky, phase) => {
   const sun = sunState(h);
   const moon = sun ? null : moonState(h);
   const rosy = rosyState(h, sun);
   const clouds = cloudState(h);
   let parts = "";
   if (sky.stars > 0.1) {
-    // 闪烁（SMIL）：保持原 8 颗星的疏密，把「明暗反差」拉大并叠加尺寸脉动，
-    // 节奏做成不对称的「闪」——暗谷偏前（keyTimes 0/0.3/1）：前 30% 快速变暗、
-    // 后 70% 缓慢回亮，更像大气闪烁的"骤暗渐亮"，而非对称呼吸。
+    // 闪烁（CSS keyframes，见 skin.css）：保持原 8 颗星的疏密，把「明暗反差」拉大
+    // 并叠加尺寸脉动，节奏做成不对称的「闪」——暗谷偏前（keyframes 0/30%/100%）：前
+    // 30% 快速变暗、后 70% 缓慢回亮，更像大气闪烁的"骤暗渐亮"，而非对称呼吸。
     // 另挑 2 颗（#2、#7）配 2.4s/3.0s 短周期做快闪点缀，其余 5–10s。
     // 最暗亮度与暗时收缩都按星芒尺寸 r 分级（大星更亮、收缩更小），不做统一值。
     // 星芒基线 0.32 → 0.40：原尺寸下凹腰臂宽不足 1px，被抗锯齿抹平，实测扣除本底后
     // 亮度增量只有 +1（等于没画出来），放大到亚像素之上才谈得到闪烁。
     // 门控 0.02 → 0.1：stars 低于 0.1 的黄昏/凌晨，组不透明度×层 0.35 后星星本就不可见，
-    // 却仍跑 16 个 SMIL 动画、持续触发整层重绘——提前不输出省掉无谓开销。
+    // 提前不输出省掉无谓的动画元素与合成层。
     // 整层压暗 0.35 会吃掉对比，星星组不透明度按 sky.stars 抬 1.25 倍补偿（上限 1）。
     const starOpacity = Math.min(1, sky.stars * 1.25);
     parts += '<g opacity="' + starOpacity.toFixed(2) + '">' +
@@ -235,39 +218,35 @@ const buildSvg = (h, sky, phase) => {
         // 暗时收缩也随 r：大星收缩更小（更接近原大小），小星缩得更明显
         const sLo = 0.8 + (r - 2) * 0.08;             // r=2→0.80，r=3→0.88
         const fill = tint || "#EAFFF8";               // 亮星偏白、个别偏蓝，冷白为默认
-        // begin 锁墙钟相位：每次重建 SVG 时亮度连续，无突变
-        const begin = -(((Date.now() / 1000 + i * 2.3) % dur + dur) % dur);
-        const timing = ' keyTimes="0; 0.3; 1" calcMode="spline"' +
-          ' keySplines="0.42 0 0.58 1; 0.42 0 0.58 1" dur="' + dur.toFixed(1) +
-          's" begin="' + begin.toFixed(1) + 's" repeatCount="indefinite"/>';
-        // 减弱动效：星芒静态保留（只画 path 本体，不输出明暗/尺寸 SMIL）
-        const anim = reduceMotion ? "" :
-          '<animate attributeName="opacity" values="1; ' + lo.toFixed(2) + '; 1"' + timing +
-          '<animateTransform attributeName="transform" type="scale" additive="sum"' +
-          ' values="1; ' + sLo.toFixed(2) + '; 1"' + timing;
+        // 负延迟锁墙钟相位：每次重建 SVG 时亮度/尺寸连续，无突变
+        const delay = phaseDelay(dur, i * 2.3);
+        // 内外两层 g：外层承担位置（translate），内层承担动画 scale——内层局部原点
+        // 就在星芒中心，CSS scale 自然绕自身缩放，无需 transform-box/origin
         return '<g transform="translate(' + cx + ' ' + cy + ')">' +
-          '<path d="' + SPARKLE_PATH + '" transform="scale(' + (r * 0.4).toFixed(2) + ')" fill="' + fill + '">' +
-          anim + '</path></g>';
+          '<g class="sky-star" style="--lo:' + lo.toFixed(2) + ';--slo:' + sLo.toFixed(2) +
+          ';--dur:' + dur.toFixed(1) + 's;--delay:' + delay.toFixed(1) + 's">' +
+          '<path d="' + SPARKLE_PATH + '" transform="scale(' + (r * 0.4).toFixed(2) + ')" fill="' + fill + '"/>' +
+          '</g></g>';
       }).join("") +
       "</g>";
   }
   if (rosy) {
     // 粉色雾双层：宽雾带压地平线 + 太阳方位的浓芯，画在山脊之后、日盘之前
     parts +=
-      '<ellipse cx="' + rosy.cx.toFixed(0) + '" cy="' + rosy.cy + '" rx="820" ry="185" fill="url(#rosyGlow)" opacity="' +
+      '<ellipse cx="' + rosy.cx.toFixed(0) + '" cy="' + rosy.cy + '" rx="820" ry="185" fill="url(#skc-rosyGlow)" opacity="' +
       (rosy.strength * 0.6).toFixed(2) + '"/>' +
-      '<ellipse cx="' + rosy.cx.toFixed(0) + '" cy="' + (rosy.cy - 30) + '" rx="400" ry="140" fill="url(#rosyGlow)" opacity="' +
+      '<ellipse cx="' + rosy.cx.toFixed(0) + '" cy="' + (rosy.cy - 30) + '" rx="400" ry="140" fill="url(#skc-rosyGlow)" opacity="' +
       rosy.strength.toFixed(2) + '"/>';
   }
   if (clouds) {
     // 白云三簇：底部压暗片先画（体积阴影），主体片后画；位置避开正午太阳
     parts += '<g class="sky-clouds" opacity="' + clouds.strength.toFixed(2) + '">' +
       CLOUDS.map((c, ci) =>
-        '<g>' + cloudDriftAnim(ci) +
+        '<g ' + driftAttrs(ci) + '>' +
         CLOUD_BLOBS.map(([dx, dy, rx, ry, top], bi) =>
           '<ellipse cx="' + (c.x + dx * c.s).toFixed(0) + '" cy="' + (c.y + dy * c.s).toFixed(0) +
           '" rx="' + (rx * c.s).toFixed(0) + '" ry="' + (ry * c.s).toFixed(0) +
-          '" fill="' + (top ? clouds.fill : clouds.shade) + '">' + cloudBlobBob(ci, bi) + '</ellipse>'
+          '" fill="' + (top ? clouds.fill : clouds.shade) + '" ' + blobAttrs(ci, bi) + '/>'
         ).join("") + "</g>"
       ).join("") +
       "</g>";
@@ -275,7 +254,7 @@ const buildSvg = (h, sky, phase) => {
   if (sun) {
     parts +=
       '<circle cx="' + sun.cx.toFixed(0) + '" cy="' + sun.cy.toFixed(0) + '" r="' + (sun.r * 2.1).toFixed(0) +
-      '" fill="url(#sunGlow)" opacity="' + sun.glow.toFixed(2) + '"/>' +
+      '" fill="url(#skc-sunGlow)" opacity="' + sun.glow.toFixed(2) + '"/>' +
       '<circle cx="' + sun.cx.toFixed(0) + '" cy="' + sun.cy.toFixed(0) + '" r="' + sun.r.toFixed(0) +
       '" fill="' + sun.color + '"/>';
   } else if (moon) {
@@ -287,7 +266,7 @@ const buildSvg = (h, sky, phase) => {
     // （原直接等于 illum，月牙时 ≈0.2×端点 0.3 几乎不可见），满月最盛且晕圈最大
     if (phase.illumination >= 0.03) {
       parts += '<circle cx="' + cxI + '" cy="' + cyI + '" r="' + (r * (1.7 + 1.1 * phase.illumination)).toFixed(0) +
-        '" fill="url(#moonGlow)" opacity="' + (0.3 + 0.7 * phase.illumination).toFixed(2) + '"/>';
+        '" fill="url(#skc-moonGlow)" opacity="' + (0.3 + 0.7 * phase.illumination).toFixed(2) + '"/>';
     }
     if (phase.illumination < 0.03) {
       // 新月：只剩一圈微光轮廓
@@ -309,22 +288,27 @@ const buildSvg = (h, sky, phase) => {
   RIDGE_PATHS.forEach((d, i) => {
     parts += '<path d="' + d + '" fill="' + sky.ridge[i] + '"/>';
   });
-  return (
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900"><defs>' +
-    '<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">' +
+  // 内联挂载时只替换 <svg> 的内容，根节点（viewBox / preserveAspectRatio）保持不动；
+  // 渐变 id 带 skc- 前缀：data URL 里的 id 是隔离的，内联后必须避免与宿主文档撞名
+  return '<defs>' +
+    '<linearGradient id="skc-sky" x1="0" y1="0" x2="0" y2="1">' +
     '<stop offset="0" stop-color="' + sky.top + '"/>' +
     '<stop offset="0.52" stop-color="' + sky.mid + '"/>' +
     '<stop offset="1" stop-color="' + sky.bot + '"/></linearGradient>' +
-    '<radialGradient id="sunGlow"><stop stop-color="#FF8A4D" stop-opacity="0.9"/>' +
+    '<radialGradient id="skc-sunGlow"><stop stop-color="#FF8A4D" stop-opacity="0.9"/>' +
     '<stop offset="1" stop-color="#FF8A4D" stop-opacity="0"/></radialGradient>' +
-    '<radialGradient id="moonGlow"><stop stop-color="#C9D6F2" stop-opacity="0.55"/>' +
+    '<radialGradient id="skc-moonGlow"><stop stop-color="#C9D6F2" stop-opacity="0.55"/>' +
     '<stop offset="0.55" stop-color="#C9D6F2" stop-opacity="0.22"/>' +
     '<stop offset="1" stop-color="#C9D6F2" stop-opacity="0"/></radialGradient>' +
-    '<radialGradient id="rosyGlow"><stop stop-color="' + (rosy ? rosy.warm : "#FFC9D6") + '" stop-opacity="0.85"/>' +
+    '<radialGradient id="skc-rosyGlow"><stop stop-color="' + (rosy ? rosy.warm : "#FFC9D6") + '" stop-opacity="0.85"/>' +
     '<stop offset="1" stop-color="' + (rosy ? rosy.warm : "#FFC9D6") + '" stop-opacity="0"/></radialGradient></defs>' +
-    '<rect width="1600" height="900" fill="url(#sky)"/>' + parts + "</svg>"
-  );
+    '<rect width="1600" height="900" fill="url(#skc-sky)"/>' + parts;
 };
+// 独立 SVG 产物（导出脚本/离线检查用）；运行时挂载走 buildScene + 内联根节点。
+// preserveAspectRatio 对齐旧 background-size: cover / background-position: center bottom
+const SCENE_ATTRS =
+  'xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice"';
+const buildSvg = (h, sky, phase) => '<svg ' + SCENE_ATTRS + '>' + buildScene(h, sky, phase) + "</svg>";
 
 // ---------- 场景量化：把「看不见的变化」挡在整屏重栅格化之外 ----------
 // 场景层只有 0.18–0.24 不透明度、叠在 body 渐变之上。1/255 的色差经 0.2 倍衰减后
@@ -343,9 +327,10 @@ const quantScene = (sky) => ({
   bot: quantHex(sky.bot),
   ridge: sky.ridge.map(quantHex),
 });
-// 场景签名：抹掉 SMIL 的 begin 相位（只影响动画起点、不改渲染结果），
-// 相同签名即「渲染等价」，swapArt 据此跳过换图
-const artSignature = (svg) => svg.replace(/begin="[^"]*"/g, "");
+// 场景签名：抹掉负动画延迟（只决定动画相位、不改渲染结果），相同签名即「渲染等价」，
+// swapArt 据此跳过重建——运行中的 CSS 动画也就不会被打断。
+// --delay 由 driftAttrs/blobAttrs/星闪统一放在 style 末尾，剥离锚点稳定。
+const artSignature = (scene) => scene.replace(/;--delay:-?[\d.]+s/g, "");
 
 // ---------- 明暗模式自写（与菜单 writeMode 同一套属性/类名） ----------
 const MODE_CLASSES = ["light", "vscode-light", "cb-light", "dark", "vscode-dark", "cb-dark"];
@@ -376,7 +361,6 @@ const writeMode = (dark) => {
 
 // ---------- 主刷新 ----------
 const SKY_VARS = [
-  "--sky-art",
   "--sky-top", "--sky-mid", "--sky-bot",
   "--sky-panel", "--sky-border", "--sky-shadow", "--sky-art-opacity", "--sky-scheme",
 ];
@@ -561,38 +545,31 @@ const FLIP_TO_DARK = 0.65, FLIP_TO_LIGHT = 0.35;
 const FLIP_HI = 0.40, FLIP_LO = 0.20;
 const flipTof = (lum) => Math.min(1, Math.max(0, (FLIP_HI - lum) / (FLIP_HI - FLIP_LO)));
 
-// ---------- 场景换图：单图层 + 签名门控 + 预解码 ----------
-// 原实现用 ::before/::after 双图层做 1.2s 交叉淡化。代价是：两个全视口浮层（z-index
-// 2147482900，压在整个界面之上）同时带 background-image，且 72 帧里每帧都要把两张
-// 全屏 SVG 合成一次——光栅瓦片逐块提交就是用户看到的「颜色渐变抽丝刷屏」。
-// 而交叉淡化本身并无必要：相邻两帧天色差 ≤1/255、天体位移 ≤1px（已实测），
-// 直接换图在视觉上无法分辨。故退回单图层硬换，并加两道闸：
-//   1) 签名门控（artSignature + 场景量化）——渲染等价就不换图。既省掉整屏重栅格化，
-//      也让云漂移/星闪的 SMIL 时间线连续运行而不被重建打断。
-//   2) 预解码——先 new Image().decode() 把新图解析完，再写入 background-image，
-//      把 XML 解析/构图从绘制路径上挪走，换图成为一次原子提交。
+// ---------- 场景挂载：内联 SVG + 签名门控 ----------
+// 场景曾是 body::before 的 background-image（data URL），SMIL 在图片内播放。WorkBuddy
+// 的渲染进程把 SMIL 整类冻结（Electron 37 / Chromium 138，inline 与 background-image
+// 都停在 t=0），而 CSS 动画正常——动效因此全部改走 CSS keyframes，场景也必须从图片
+// 改成文档里的内联 <svg>，主题样式表才选得中云/星元素。
+// body::before 保留为 js 降级（CSP 禁 eval）时的静态兜底，js 运行时由
+// body[data-sky-js]::before 隐藏。
+// 重建仍受签名门控：渲染等价就不碰 DOM，运行中的 CSS 动画不被打断；真正重建时每个
+// 动画元素的负延迟按当前墙钟重算（见 phaseDelay），相位连续。
 let artKey = "";
-let artInit = false;
-const swapArt = (svg) => {
-  const key = artSignature(svg);
-  if (key === artKey) return; // 渲染结果等价：不碰 DOM，SMIL 时间线继续跑
+let artEl = null;
+const ART_NS = "http://www.w3.org/2000/svg";
+const swapArt = (scene) => {
+  const key = artSignature(scene);
+  if (key === artKey) return; // 渲染等价：不碰 DOM，CSS 动画继续跑
   artKey = key;
-  const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
-  const commit = () => setVar("--sky-art", 'url("' + url + '")');
-  // 首帧同步写入：此时 --sky-art 尚未定义，异步等待会先闪一下 skin.css 的静态兜底图
-  if (artInit) {
-    try {
-      const img = new Image();
-      img.src = url;
-      if (typeof img.decode === "function") {
-        img.decode().then(commit, commit);
-        return;
-      }
-      if (!img.complete) { img.onload = commit; img.onerror = commit; return; }
-    } catch { /* 无 Image（Node 测试桩/受限环境）：直接写入 */ }
+  if (!artEl) {
+    artEl = document.createElementNS(ART_NS, "svg");
+    artEl.setAttribute("class", "sky-art");
+    artEl.setAttribute("viewBox", "0 0 1600 900");
+    artEl.setAttribute("preserveAspectRatio", "xMidYMax slice");
+    artEl.setAttribute("aria-hidden", "true");
+    document.body.appendChild(artEl);
   }
-  artInit = true;
-  commit();
+  artEl.innerHTML = scene;
 };
 
 const tick = () => {
@@ -607,7 +584,7 @@ const tick = () => {
     ? flipT >= 0.5
     : (currentDark ? flipT > FLIP_TO_LIGHT : flipT >= FLIP_TO_DARK);
   // 场景几何时间对齐到 GEOM_STEP 栅格，配色走 COLOR_STEP 栅格（见上方量化说明）
-  swapArt(buildSvg(quantHour(h), quantScene(sky), phase));
+  swapArt(buildScene(quantHour(h), quantScene(sky), phase));
   setVar("--sky-top", sky.top);
   setVar("--sky-mid", sky.mid);
   setVar("--sky-bot", sky.bot);
@@ -704,6 +681,8 @@ return function teardown() {
   sheetObserver.disconnect();
   const st = document.body.style;
   SKY_VARS.forEach((p) => st.removeProperty(p));
+  if (artEl) { artEl.remove(); artEl = null; }
+  artKey = "";
   written.clear();
   clearApplied();
   delete document.body.dataset.skyJs;

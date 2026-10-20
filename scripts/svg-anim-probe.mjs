@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 // svg-anim-probe.mjs —— SMIL 动效离线验证工具（无头 Edge 多帧渲染 + Pillow 采样）
 //
+// ★ 结论不可迁移到 WorkBuddy：Electron 37 / Chromium 138 的渲染进程把 SMIL 整类冻结
+//   （inline 与 background-image 里的 SMIL 都停在 t=0），而无头 Edge 里 SMIL 正常。
+//   本工具只适合验证「SVG 素材本身写得对不对」；动效是否在应用里真的跑，必须走
+//   活体 CDP 截屏差分（见 output/cloud-probe/live-*.mjs 系列）。
+//
 // 用途：验证「含 SMIL/CSS 动画的 SVG 以 CSS background-image（data URL）方式挂载时，
 //       动画是否真的在运行、幅度/面积是否可感知」。这是 workbuddy-skins 里 sky-clock
 //       等「动态场景 SVG」的通用排障手段：直接把场景 SVG 喂进来，按给定采样点在不同

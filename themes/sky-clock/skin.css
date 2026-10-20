@@ -1,19 +1,20 @@
 /* Sky Clock · 四时天空 —— 天色随真实时间流转的定制主题。
    骨架与取色哲学移植自内置 aurora（山野极光，JanCong/workbuddy-skin，MIT）：
    body 渐变底 + body::before 挂载场景 SVG + 对话框磨砂浮层。
-   区别在于全部色彩都走 CSS 变量：skin.js 每 30s 按天空时刻表重建一次场景 SVG
-   （太阳/月亮弧线、山脊、星星）写入 body::before，并改写本文件引用的变量；
+   区别在于全部色彩都走 CSS 变量：skin.js 每 30s 按天空时刻表重建一次场景
+   （太阳/月亮弧线、山脊、星星），挂成内联 <svg class="sky-art">，并改写本文件
+   引用的变量；body::before 仅在 js 降级时提供静态兜底图；
    明暗模式翻转在亮度过渡带的中央一次完成（带内原生表面保持本档阶梯不动，只随天色
    微调色相；跨档插值会放大令牌间明度差并落在中间调，形成满屏矩形色块，已废弃）。
    变量未写入时（CSP 禁 eval 导致
    js 降级）回退到此处声明的黄昏静态默认值与 sky.svg 兜底图，主题依然可用。
 
-   ★ 性能基线：本文件对「全视口元素」零 CSS 过渡/动画。
-   曾经的 body 颜色 1.5s transition 与场景双图层 1.2s 交叉淡化，会让每次 30s 刷新
-   演变成 70–90 帧的整屏渐变重绘；全屏渐变与全屏 SVG 的光栅瓦片逐块提交，在屏上
-   就是「颜色渐变抽丝刷屏」。因 30s 相邻帧天色差 ≤1/255、天体位移 ≤1px，过渡本就
-   不必要——改为 skin.js 差量硬写（值未变不碰 DOM），视觉连续且无重绘洪峰。
-   如需再加过渡，只能加在局部元素上，禁止回加到 body / body::before。
+   ★ 性能基线：全视口「换景」零过渡。曾经的 body 颜色 1.5s transition 与场景双图层
+   1.2s 交叉淡化，会让每次 30s 刷新演变成 70–90 帧的整屏渐变重绘；全屏渐变与全屏
+   SVG 的光栅瓦片逐块提交，在屏上就是「颜色渐变抽丝刷屏」。因 30s 相邻帧天色差
+   ≤1/255、天体位移 ≤1px，过渡本就不必要——改为 skin.js 差量硬写（值未变不碰 DOM）。
+   场景层内的云漂移/星闪是常驻 CSS keyframes（transform/opacity，合成层内），
+   与 30s 重建解耦；禁止把 transition 回加到 body / body::before。
    artwork 层 z-index 2147482900，避让本地 🎨 菜单按钮（同层级 2147483000 区间） */
 @property --sky-top { syntax: "<color>"; inherits: true; initial-value: #4b4c92; }
 @property --sky-mid { syntax: "<color>"; inherits: true; initial-value: #c96b80; }
@@ -34,11 +35,10 @@ body {
   ) !important;
 }
 
-/* 场景层：单图层硬换（skin.js 预解码后一次写入 --sky-art）。
-   will-change 把这个全视口浮层常驻提升为独立合成层——换图只重栅格化本层，下方
-   界面不参与重绘；双图层交叉淡化方案已移除（见顶部性能基线）。
-   contain: strict 切断布局/绘制外溢，把重栅格化范围钉死在本层。
-   js 降级时此层挂静态兜底图 sky.svg，行为一致 */
+/* 静态兜底场景层：仅 js 未运行（CSP 禁 eval）时可见——js 运行后由
+   body[data-sky-js]::before 隐藏，改由内联 <svg class="sky-art"> 接管。
+   contain: strict 切断布局/绘制外溢；will-change 把全视口浮层常驻为独立合成层，
+   动效只在场景层内重绘，下方界面不参与。 */
 body::before {
   content: "";
   position: fixed;
@@ -53,6 +53,78 @@ body::before {
   contain: strict;
   will-change: transform, opacity;
 }
+
+/* 场景动效：WorkBuddy 渲染进程把 SMIL 整类冻结（Electron 37 / Chromium 138，
+   inline 与 background-image 里的 SMIL 都停在 t=0），云漂移/blob 微动/星闪一律改用
+   CSS keyframes。skin.js 把场景挂成 document 里的内联 <svg class="sky-art">（不再走
+   background-image），并按墙钟写入负 animation-delay（--delay）——重建后播放位置
+   直接落在当前相位，视觉连续。 */
+.sky-art {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2147482900;
+  opacity: var(--sky-art-opacity, 0.22);
+  pointer-events: none;
+  contain: strict;
+  will-change: transform, opacity;
+}
+
+/* 云簇漂移：去程更慢、回程略快（阵风而非机械往返）。
+   幅度/周期/相位由 skin.js 以 --dx/--dy/--dur/--delay 下发。 */
+@keyframes sky-cloud-drift {
+  0%   { transform: translate(0, 0); animation-timing-function: cubic-bezier(0.3, 0, 0.7, 1); }
+  50%  { transform: translate(var(--dx, 0px), var(--dy, 0px)); animation-timing-function: cubic-bezier(0.42, 0, 1, 1); }
+  100% { transform: translate(0, 0); }
+}
+.sky-art .sky-cloud-drift {
+  animation: sky-cloud-drift var(--dur, 75s) linear infinite;
+  animation-delay: var(--delay, 0s);
+  will-change: transform;
+}
+
+/* 簇内 blob 微动：在整簇漂移之上叠加 1–2px 呼吸，让云边飘边鼓 */
+@keyframes sky-cloud-bob {
+  0%   { transform: translate(0, 0); animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  50%  { transform: translate(var(--bx, 0px), var(--by, 0px)); animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  100% { transform: translate(0, 0); }
+}
+.sky-art .sky-cloud-bob {
+  animation: sky-cloud-bob var(--dur, 13s) linear infinite;
+  animation-delay: var(--delay, 0s);
+  will-change: transform;
+}
+
+/* 星闪：明暗反差（暗谷偏前 30%，骤暗渐亮）+ 尺寸脉动。星芒外层 g 已用 translate
+   定位，动画 g 的局部原点就是星芒中心，scale 自然绕自身缩放（无需 transform-box）。 */
+@keyframes sky-star-blink {
+  0%   { opacity: 1; animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1); }
+  30%  { opacity: var(--lo, 0.08); animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1); }
+  100% { opacity: 1; }
+}
+@keyframes sky-star-pulse {
+  0%   { transform: scale(1); animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1); }
+  30%  { transform: scale(var(--slo, 0.8)); animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1); }
+  100% { transform: scale(1); }
+}
+.sky-art .sky-star {
+  animation: sky-star-blink var(--dur, 6s) linear infinite,
+             sky-star-pulse var(--dur, 6s) linear infinite;
+  animation-delay: var(--delay, 0s);
+  will-change: transform, opacity;
+}
+
+/* 减弱动效：只关场景动效，天色/日月照常流转（云与星芒静态保留）。
+   CSS 媒体查询会跟随系统设置实时生效，不需要 JS 参与。 */
+@media (prefers-reduced-motion: reduce) {
+  .sky-art .sky-cloud-drift,
+  .sky-art .sky-cloud-bob,
+  .sky-art .sky-star { animation: none !important; }
+}
+
+/* 内联场景层接管后，js 运行时隐藏 ::before 的静态兜底图（CSP 禁 eval 时才回退） */
+body[data-sky-js]::before { content: none; }
 
 body [role="dialog"] {
   border-color: var(--sky-border) !important;

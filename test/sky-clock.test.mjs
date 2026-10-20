@@ -6,9 +6,14 @@ import test from "node:test";
 // 验证变量写入、明暗判定、SVG 重建与 teardown 清理（1h 定时器必须可清除，否则测试进程悬挂）
 const skinJs = await readFile(new URL("../themes/sky-clock/skin.js", import.meta.url), "utf8");
 
-function makeEl() {
+function makeEl(tag = "") {
   const classes = new Set();
   return {
+    tagName: tag,
+    attrs: {},
+    children: [],
+    innerHTML: "",
+    removed: false,
     dataset: {},
     style: {
       props: new Map(),
@@ -20,6 +25,9 @@ function makeEl() {
       toggle(c, w) { if (w) classes.add(c); else classes.delete(c); },
       contains(c) { return classes.has(c); },
     },
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    appendChild(c) { this.children.push(c); return c; },
+    remove() { this.removed = true; },
   };
 }
 
@@ -35,6 +43,7 @@ function installDomStubs() {
     body,
     documentElement: html,
     hidden: false,
+    createElementNS(ns, tag) { return makeEl(tag); },
     addEventListener(type, fn) { listeners.set(type, fn); },
     removeEventListener(type) { listeners.delete(type); },
   };
@@ -58,16 +67,19 @@ test("sky-clock skin.js：激活即写入 --sky-* 变量与场景 SVG，明暗�
   try {
     const teardown = new Function(skinJs)();
     assert.equal(typeof teardown, "function", "必须返回拆除回调");
-    // 九个变量全部写入
-    for (const key of ["--sky-art", "--sky-top", "--sky-mid", "--sky-bot", "--sky-panel", "--sky-border", "--sky-shadow", "--sky-art-opacity", "--sky-scheme"]) {
+    // 八个变量全部写入（--sky-art 已随 background-image 方案移除）
+    for (const key of ["--sky-top", "--sky-mid", "--sky-bot", "--sky-panel", "--sky-border", "--sky-shadow", "--sky-art-opacity", "--sky-scheme"]) {
       assert.ok(dom.body.style.props.has(key), `缺少变量 ${key}`);
     }
-    // 场景 SVG 为内联 data URL，含天空渐变与山脊
-    const art = dom.body.style.props.get("--sky-art");
-    assert.ok(art.startsWith('url("data:image/svg+xml;charset=utf-8,'));
-    const svg = decodeURIComponent(art.slice('url("data:image/svg+xml;charset=utf-8,'.length, -2));
-    assert.ok(svg.includes('viewBox="0 0 1600 900"'));
-    assert.ok(svg.includes("M0 600 Q280 520")); // 山脊轮廓参考 sakura.svg 三层山形
+    // 场景为内联 <svg class="sky-art">：根节点固定，内容含天空渐变与山脊
+    const art = dom.body.children.find((c) => c.attrs.class === "sky-art");
+    assert.ok(art, "首帧应挂载内联场景层");
+    assert.equal(art.attrs.viewBox, "0 0 1600 900");
+    assert.equal(art.attrs.preserveAspectRatio, "xMidYMax slice");
+    assert.ok(art.innerHTML.includes("<defs>"));
+    assert.ok(art.innerHTML.includes("M0 600 Q280 520")); // 山脊轮廓参考 sakura.svg 三层山形
+    assert.ok(art.innerHTML.includes("url(#skc-sky)"), "渐变 id 需带前缀，避免内联后与宿主文档撞名");
+    assert.ok(!art.innerHTML.includes("<svg"), "只替换内容，不重复根节点");
     // 明暗写入与 --sky-scheme 一致，类名/属性与菜单 writeMode 同构
     const dark = dom.body.dataset.vscodeThemeKind === "vscode-dark";
     assert.equal(dom.body.style.props.get("--sky-scheme"), dark ? "dark" : "light");
@@ -303,12 +315,15 @@ test("sky-clock skin.js：明暗翻转点在过渡带中央，并带 0.30 迟滞
   }
 });
 
-test("sky-clock skin.js：场景为单图层硬换，不再输出双图层交叉淡化变量", () => {
+test("sky-clock skin.js：场景为内联 SVG 单图层，不再写 background-image 变量", () => {
   const dom = installDomStubs();
   try {
     const teardown = new Function(skinJs)();
     const p = dom.body.style.props;
-    assert.ok(p.has("--sky-art"), "首帧应同步写入场景图（避免闪静态兜底图）");
+    assert.ok(!p.has("--sky-art"), "场景不再走 data URL（CSS 动画需要文档树里的元素）");
+    const art = dom.body.children.find((c) => c.attrs.class === "sky-art");
+    assert.ok(art, "场景应挂成内联 <svg class=\"sky-art\">");
+    assert.equal(art.attrs["aria-hidden"], "true");
     // 双图层交叉淡化已移除：全视口浮层上的 1.2s opacity 过渡是「抽丝刷屏」主因
     for (const key of ["--sky-art-b", "--sky-a-on", "--sky-b-on"]) {
       assert.ok(!p.has(key), `${key} 应已移除（单图层方案）`);
@@ -316,6 +331,7 @@ test("sky-clock skin.js：场景为单图层硬换，不再输出双图层交叉
     // art-opacity 为连续数值（flipT 插值），不再是二元 0.22/0.35
     assert.match(p.get("--sky-art-opacity"), /^0\.\d{3}$/);
     teardown();
+    assert.equal(art.removed, true, "teardown 应移除场景层");
   } finally {
     dom.restore();
   }
@@ -365,15 +381,18 @@ test("sky-clock skin.js：teardown 清除定时器、监听与全部 --sky-* 变
 // 月相引擎为纯函数段（FRAMES 起至明暗模式前），可在 Node 端脱离 DOM 直接求值
 const lib = eval(
   skinJs.slice(skinJs.indexOf("const FRAMES"), skinJs.indexOf("// ---------- 明暗模式")) +
-    "; ({ moonPhase, moonLitPath, buildSvg, frameAt, cloudState, quantHour, quantScene, artSignature })",
+    "; ({ moonPhase, moonLitPath, buildScene, buildSvg, frameAt, cloudState, quantHour, quantScene, artSignature })",
 );
 
-test("sky-clock 签名门控：抹掉 SMIL begin 后渲染等价的场景不重建，一天省下 ≥25% 整屏重栅格化", () => {
-  // begin 只决定动画起点相位，不改渲染结果——签名必须把它排除
+test("sky-clock 签名门控：抹掉动画负延迟后渲染等价的场景不重建，一天省下 ≥25% 重栅格化", () => {
+  // --delay 只决定动画相位，不改渲染结果——签名必须把它排除
   const h = lib.quantHour(23);
-  const svg = lib.buildSvg(h, lib.quantScene(lib.frameAt(23)), lib.moonPhase(Date.UTC(2026, 0, 3)));
-  assert.ok(svg.includes('begin="'), "夜间场景应含 SMIL begin 相位");
-  assert.ok(!lib.artSignature(svg).includes('begin="'), "签名应抹掉 begin 相位");
+  const scene = lib.buildScene(h, lib.quantScene(lib.frameAt(23)), lib.moonPhase(Date.UTC(2026, 0, 3)));
+  assert.ok(scene.includes("--delay:"), "夜间场景应含星闪的负延迟相位");
+  assert.ok(!lib.artSignature(scene).includes("--delay:"), "签名应抹掉 --delay 相位");
+  // 只抹相位，不动幅度/周期（否则签名会把真实视觉变化也一起抹掉）
+  const noon = lib.buildScene(12, lib.frameAt(12), lib.moonPhase(Date.now()));
+  assert.ok(lib.artSignature(noon).includes("--dx:36px;--dy:4px;--dur:75s"), "签名必须保留动画参数");
   // 量化到 1 分钟几何栅格：30s 的 tick 周期内，相邻两刻常落在同一栅格
   assert.equal(lib.quantHour(12 + 10 / 3600), lib.quantHour(12 + 20 / 3600));
   // 一天 2880 次 tick（每 30s）里实际需要换图的次数——量化+签名门控应挡掉 ≥25%
@@ -382,12 +401,43 @@ test("sky-clock 签名门控：抹掉 SMIL begin 后渲染等价的场景不重�
   for (let s = 0; s < 86400; s += 30) {
     const hour = s / 3600;
     const key = lib.artSignature(
-      lib.buildSvg(lib.quantHour(hour), lib.quantScene(lib.frameAt(hour)), lib.moonPhase(base + s * 1000)),
+      lib.buildScene(lib.quantHour(hour), lib.quantScene(lib.frameAt(hour)), lib.moonPhase(base + s * 1000)),
     );
     total++;
     if (key !== prev) { swaps++; prev = key; }
   }
   assert.ok(swaps < total * 0.75, `换图率应 <75%（实测 ${((100 * swaps) / total).toFixed(1)}%）`);
+});
+
+test("sky-clock 重建相位连续：负延迟按墙钟推进，10 分钟后的重建不重置视觉相位", () => {
+  const RealDate = globalThis.Date;
+  const t0 = new RealDate(2026, 9, 15, 12, 0, 0).getTime();
+  const freeze = (ms) => {
+    globalThis.Date = class extends RealDate {
+      constructor(...a) { super(...(a.length ? a : [ms])); }
+      static now() { return ms; }
+    };
+  };
+  const phases = (scene) =>
+    [...scene.matchAll(/--dur:([\d.]+)s;--delay:([-\d.]+)s/g)].map((m) => {
+      const dur = Number(m[1]), delay = Number(m[2]);
+      return { dur, progress: ((-delay % dur) + dur) % dur };
+    });
+  try {
+    freeze(t0);
+    const a = phases(lib.buildScene(12, lib.frameAt(12), lib.moonPhase(t0)));
+    freeze(t0 + 600000); // 10 分钟后重建
+    const b = phases(lib.buildScene(12, lib.frameAt(12), lib.moonPhase(t0 + 600000)));
+    assert.equal(a.length, b.length, "两次重建的动画元素数量应一致");
+    assert.ok(a.length > 0, "正午场景应含云动画元素");
+    a.forEach((x, i) => {
+      const expect = (x.progress + 600) % x.dur;
+      const delta = Math.abs(b[i].progress - expect);
+      assert.ok(Math.min(delta, x.dur - delta) < 0.3, `元素 ${i} 相位跳变：${x.progress.toFixed(1)}s → ${b[i].progress.toFixed(1)}s（期望 ${expect.toFixed(1)}s）`);
+    });
+  } finally {
+    globalThis.Date = RealDate;
+  }
 });
 
 test("sky-clock 月相：朔望月推算——新月/上弦/满月/下弦的照亮比与命名", () => {
@@ -427,9 +477,9 @@ test("sky-clock 月相弧：盈月右亮、亏月左亮，弦月界线退化为�
   assert.equal(termSweep(0.9), "1", "残月界线应凸向亮侧");
   // 端到端：深夜场景绘制月亮，白天场景绘制太阳（defs 恒含渐变定义，须查 url() 引用）
   const night = lib.buildSvg(23, lib.frameAt(23), lib.moonPhase(Date.UTC(2026, 0, 3))); // 2026-01-03 满月附近
-  assert.ok(night.includes('url(#moonGlow)') && !night.includes('url(#sunGlow)'));
+  assert.ok(night.includes("url(#skc-moonGlow)") && !night.includes("url(#skc-sunGlow)"));
   const day = lib.buildSvg(12, lib.frameAt(12), lib.moonPhase(Date.now()));
-  assert.ok(day.includes('url(#sunGlow)') && !day.includes('url(#moonGlow)'));
+  assert.ok(day.includes("url(#skc-sunGlow)") && !day.includes("url(#skc-moonGlow)"));
 });
 
 test("sky-clock 白云：正午三簇纯白、晨昏染霞色、夜间不渲染", () => {
@@ -444,38 +494,42 @@ test("sky-clock 白云：正午三簇纯白、晨昏染霞色、夜间不渲染"
   assert.ok(!svgNight.includes("sky-clouds"), "子夜场景不应含云层");
 });
 
-test("sky-clock 白云：漂移带 y 沉浮分量与非对称 keySplines（模拟阵风）", () => {
-  const svg = lib.buildSvg(12, lib.frameAt(12), lib.moonPhase(Date.now()));
-  assert.ok(svg.includes('values="0 0; 36 4; 0 0"'), "云漂移应含 y 沉浮分量");
-  assert.ok(svg.includes('keySplines="0.3 0 0.7 1; 0.42 0 1 1"'), "去程/回程 keySplines 应非对称");
-  assert.ok(!svg.includes('keySplines="0.42 0 0.58 1; 0.42 0 0.58 1"'), "旧对称 keySplines 应已移除");
+test("sky-clock 白云：漂移带 y 沉浮分量与 CSS 动画标记（模拟阵风）", () => {
+  const scene = lib.buildScene(12, lib.frameAt(12), lib.moonPhase(Date.now()));
+  assert.ok(scene.includes('class="sky-cloud-drift"'), "云簇应挂 CSS 漂移类");
+  assert.ok(scene.includes("--dx:36px;--dy:4px;--dur:75s"), "首簇应含 x/y 幅度、y 沉浮与周期");
+  assert.ok(scene.includes("--delay:-"), "漂移应带负延迟锁定墙钟相位");
 });
 
-test("sky-clock 白云：簇内 blob 叠加 additive bob（差异变形），数量与相位正确", () => {
-  const svg = lib.buildSvg(12, lib.frameAt(12), lib.moonPhase(Date.now()));
-  const bobs = svg.match(/<animateTransform[^>]*additive="sum"[^>]*\/>/g) || [];
-  assert.equal(bobs.length, 12, `三簇 × 四 blob 应有 12 条 additive bob，实际 ${bobs.length}`);
-  assert.ok(bobs.every((b) => b.includes('dur="')), "每条 bob 应有 dur");
-  const durs = new Set(bobs.map((b) => /dur="(\d+)s"/.exec(b)[1]));
+test("sky-clock 白云：簇内 blob 差异变形——数量、周期与相位错开", () => {
+  const scene = lib.buildScene(12, lib.frameAt(12), lib.moonPhase(Date.now()));
+  const styles = [...scene.matchAll(/class="sky-cloud-bob" style="([^"]*)"/g)].map((m) => m[1]);
+  assert.equal(styles.length, 12, `三簇 × 四 blob 应有 12 个 bob，实际 ${styles.length}`);
+  const durs = new Set(styles.map((s) => /--dur:([\d.]+)s/.exec(s)[1]));
   assert.ok(durs.size >= 4, `bob 周期应错开（≥4 种），实际 ${[...durs].join(",")}`);
-  const begins = new Set(bobs.map((b) => /begin="([-\d.]+)s"/.exec(b)[1]));
-  assert.ok(begins.size > 1, "bob 相位应错开，不应全部同相位");
-  assert.ok(bobs.every((b) => b.includes('keySplines="0.4 0 0.6 1; 0.4 0 0.6 1"')), "bob 应使用对称缓动（轻柔呼吸）");
+  const delays = new Set(styles.map((s) => /--delay:([-\d.]+)s/.exec(s)[1]));
+  assert.ok(delays.size > 1, "bob 相位应错开，不应全部同相位");
+  assert.ok(styles.every((s) => /--bx:[\d.]+px/.test(s) && /--by:[\d.]+px/.test(s)), "每个 bob 应有 x/y 幅度");
 });
 
-test("sky-clock 减弱动效：命中 prefers-reduced-motion 时不输出云漂移与星闪 SMIL", () => {
-  const saved = globalThis.window;
-  globalThis.window = { matchMedia: () => ({ matches: true }) };
-  try {
-    const libRM = eval(skinJs.slice(skinJs.indexOf("const FRAMES"), skinJs.indexOf("// ---------- 明暗模式")) +
-      "; ({ buildSvg, frameAt, moonPhase })");
-    const noon = libRM.buildSvg(12, libRM.frameAt(12), libRM.moonPhase(Date.now()));
-    assert.ok(noon.includes('class="sky-clouds"'), "减弱动效下云层应静态保留");
-    assert.ok(!noon.includes("<animate"), "减弱动效下正午场景不应含 SMIL 动画");
-    const night = libRM.buildSvg(23, libRM.frameAt(23), libRM.moonPhase(Date.now()));
-    assert.ok(night.includes("M0 -10 Q1.6"), "减弱动效下星芒应静态保留");
-    assert.ok(!night.includes("<animate"), "减弱动效下夜间场景不应含星闪 SMIL");
-  } finally {
-    if (saved === undefined) delete globalThis.window; else globalThis.window = saved;
+test("sky-clock 场景：不含 SMIL（WorkBuddy 渲染进程把 SMIL 整类冻结）", () => {
+  const noon = lib.buildScene(12, lib.frameAt(12), lib.moonPhase(Date.now()));
+  const night = lib.buildScene(23, lib.frameAt(23), lib.moonPhase(Date.now()));
+  for (const scene of [noon, night]) {
+    assert.ok(!/<\/?animate|begin="/.test(scene), "场景不得回退到 SMIL");
   }
+});
+
+test("sky-clock 减弱动效：由 skin.css 的 media query 关停，JS 不再做动画门控", async () => {
+  const css = await readFile(new URL("../themes/sky-clock/skin.css", import.meta.url), "utf8");
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/, "skin.css 应有减弱动效查询");
+  assert.match(css, /\.sky-art \.sky-cloud-drift[\s\S]*animation: none !important/, "查询内应关停云漂移");
+  assert.ok(css.includes(".sky-art .sky-cloud-bob"), "查询内应关停 blob 微动");
+  assert.ok(css.includes(".sky-art .sky-star"), "查询内应关停星闪");
+  const noon = lib.buildScene(12, lib.frameAt(12), lib.moonPhase(Date.now()));
+  assert.ok(noon.includes('class="sky-clouds"'), "云层应始终输出（静态保留）");
+  assert.ok(noon.includes('class="sky-cloud-drift"'), "动画标记始终输出，降级交给 CSS");
+  const night = lib.buildScene(23, lib.frameAt(23), lib.moonPhase(Date.now()));
+  assert.ok(night.includes("M0 -10 Q1.6"), "星芒应始终输出（静态保留）");
+  assert.ok(!skinJs.includes("reduceMotion"), "JS 侧 SMIL 门控已删除");
 });

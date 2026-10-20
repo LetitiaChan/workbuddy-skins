@@ -328,7 +328,7 @@ CI 与发版：
 - `test/skin-css.test.mjs` — 皮肤 CSS 生成：首页主标题 accent→secondary 渐变文字与 4 向 0 模糊 drop-shadow 实心轮廓（轮廓色 `--wb-halo` 随渐变中点 oklch 亮度自适应黑/白，清掉原生 text-shadow 防重影）、`copy.tagline` 渐变标语（未配置时不注入文案）、左上角字标硬切渐变双色且全 `var()` 引用（自定义取色自动适配，不硬编码色值）、已发出对话气泡透化（`.cr-theme` 作用域 `--cr-user-bubble-bg` 16% 文字色洗底，明暗双向自适应）、侧栏一级树行常态透明/悬停洗底、会话/详情页壁纸降噪（chat 页 50% 纱罩、配色主题不输出降噪规则）、详情面板透化（内部组件/Monaco 各背景层透明、md 代码块与表格 40% 浮层、配色主题不回归）、`buildMascotCss` 成长伙伴换图（`content: url()` 整体替换 + `object-fit: contain` 入框 + 隐藏原生悬停 video，未配置返回空串、拒绝外部 URL）
 - `test/theme-store.test.mjs` — 主题列表：多目录同 id 去重（内置优先）、缺 `name` 不再崩、跳过坏清单与 `.tmp-` 残留目录；`create` 名称校验
 - `test/bundled-themes.test.mjs` — 内置主题集成护栏：`themes/` 下每个目录都通过 `loadTheme` 完整校验、主题 id 与目录名一致且不重复、随主题的 `js` 文本可被 JS 引擎编译
-- `test/sky-clock.test.mjs` — Sky Clock 引擎（最小 DOM 桩跑真实 skin.js）：激活即写入 `--sky-*` 变量与重建的场景 SVG data URL（山脊沿用 aurora 轮廓）、明暗与 `--sky-scheme` 一致且类名/属性与菜单 `writeMode` 同构、月相朔望月推算（新月/上弦/满月/下弦照亮比与命名、跨年回卷精度）与月相弧 sweep 四象限规则（蛾眉/盈凸/亏凸/残月界线凸向，错配会把残月画成亏凸月）、白云节奏（正午峰值纯白、晨昏染霞色、夜间不渲染）、teardown 清定时器/监听/全部内联变量且幂等
+- `test/sky-clock.test.mjs` — Sky Clock 引擎（最小 DOM 桩跑真实 skin.js）：激活即写入 `--sky-*` 变量与内联 `<svg class="sky-art">` 场景（山脊沿用 aurora 轮廓、渐变 id 带 `skc-` 前缀防撞名、场景不含 SMIL）、明暗与 `--sky-scheme` 一致且类名/属性与菜单 `writeMode` 同构、月相朔望月推算（新月/上弦/满月/下弦照亮比与命名、跨年回卷精度）与月相弧 sweep 四象限规则（蛾眉/盈凸/亏凸/残月界线凸向，错配会把残月画成亏凸月）、白云节奏（正午峰值纯白、晨昏染霞色、夜间不渲染）、teardown 清定时器/监听/全部内联变量且幂等
 - `test/cdp-client.test.mjs` — CDP 会话：默认不 enable 任何域、`enableDomains` 显式开启与参数校验
 - `test/cli.test.mjs` — `apply` 编排：坏主题不进菜单且保序、选中主题失败即报错、恢复上次自定义皮肤、恢复上次原生浅色/深色（按默认主题注入菜单但不应用皮肤，只钉明暗）、记住的主题失效回退默认；状态回执（apply/pause 成败落盘、写失败不阻断）；`doctor` 的 Node 版本检查与状态展示、适配预警透传（`--port` 透传探测）、探测/仓库检查失败降级不影响报告
 - `test/state-store.test.mjs` — 状态回执：读写往返、浅合并、损坏文件回退 null、原子写入
