@@ -7,7 +7,7 @@
     "workbuddy-skin": "src/cli.mjs"
   },
   "scripts": {
-    "test": "node --test \"test/**/*.test.mjs\"",
+    "test": "node --test",
     "doctor": "node src/cli.mjs doctor",
     "status": "node src/cli.mjs status",
     "list": "node src/cli.mjs list",

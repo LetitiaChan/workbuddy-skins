@@ -1,0 +1,8 @@
+# 统一文本行尾为 LF。palette 签名夹具与 buildSignatureCss 输出做逐字节比对，
+# Windows 检出若把夹具转成 CRLF 会导致 CI 假红。
+* text=auto eol=lf
+
+# Windows 脚本保留 CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
